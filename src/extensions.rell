@@ -1,0 +1,78 @@
+module;
+
+import lib.ft4.assets;
+import lib.ft4.accounts;
+import lib.ft4.auth;
+import ft_utils: lib.ft4.utils;
+import ^.pairs;
+import ^.orderbook;
+import ^.main;
+import ^.external;
+
+@extend(assets.before_transfer)
+function(
+    from: accounts.account,
+    to: accounts.account,
+    assets.asset,
+    amount: big_integer
+) {
+    val pairs = pairs.pair @* { .account in [from, to] };
+
+    if(pairs.size() != 0) {
+        val this_op_name = op_context.get_current_operation().name;
+        // no direct transfer to and from pair accounts
+        if (
+            this_op_name ==
+            rell.meta(assets.external.transfer).mount_name
+        ) {
+            require(
+                pairs.size() == 0,
+                "Transfers to and from liquidity pools are not allowed"
+            );
+        }
+        val ALLOWED_OPS = [
+            rell.meta(external.swap).mount_name,
+            rell.meta(external.double_swap).mount_name,
+            rell.meta(external.add_liq).mount_name,
+            rell.meta(external.remove_liq).mount_name,
+            rell.meta(external.burn_liq).mount_name,
+        ];
+        require(
+            this_op_name in ALLOWED_OPS,
+            "This operation cannot be used to move funds to/from a liquidity pool account"
+        );
+        val from_pool = pairs @? { .account == from };
+        val to_pool = pairs @? { .account == to };
+        if (from_pool??) {
+            when (asset) {
+                from_pool.asset1 -> from_pool.amount1 -= amount;
+                main.ccy.asset -> from_pool.amount_ccy -= amount;
+                from_pool.lp_token -> {}
+                else -> require(
+                    false,
+                    "Liquidity pools cannot send extraneous tokens <%s>".format(asset.id)
+                );
+            }
+        }
+        if (to_pool??) {
+            when (asset) {
+                to_pool.asset1 -> to_pool.amount1 += amount;
+                main.ccy.asset -> to_pool.amount_ccy += amount;
+                to_pool.lp_token -> {}
+                else -> require(
+                    false,
+                    "Liquidity pools cannot receive extraneous tokens <%s>".format(asset.id)
+                );
+            }
+        }
+    }
+}
+
+@extend(auth.before_authenticate)
+function(
+    accounts.account,
+    accounts.account_auth_descriptor
+) {
+    val time = ft_utils.latest_time();
+    orderbook.order @* { account, .deadline < time } (orderbook.remove_order($));
+}

@@ -1,0 +1,108 @@
+@test module;
+import ops: ^.test_operations;
+import ^^.main;
+import ^^.external;
+import ^^.pairs;
+import lib.ft4.accounts;
+import ft_utils: lib.ft4.utils;
+import lib.ft4.assets;
+import test: lib.ft4.test.utils;
+
+function get_account(pubkey: byte_array) {
+    val acc = accounts.account @? { pubkey.hash() };
+    return if (acc??) acc else create_account(pubkey);
+}
+
+function create_account(pubkey: byte_array) {
+    val ad = accounts.auth_descriptor(
+        accounts.auth_type.S,
+        [
+            set(["A", "T"]).to_gtv(),
+            pubkey.to_hex().to_gtv()
+        ],
+        null.to_gtv()
+    );
+    ops.create_acc_test(ad).run();
+    return accounts.account @ { pubkey.hash() };
+}
+
+function get_asset(name, decimals: integer = 18) {
+    rell.test.tx().op(
+        ops.register_asset_test(name, decimals)
+    ).run();
+    return assets.asset @ { name };
+}
+
+// 100, 18 decimals
+function give_balance(accounts.account, assets.asset, big_integer = 100000000000000000000L) {
+    rell.test.tx().op(
+        ops.mint_test(
+            account.id,
+            asset.id,
+            big_integer
+        )
+    ).nop().run();
+}
+
+function run(rell.test.op, signer: rell.test.keypair) {
+    rell.test.tx().op(
+        test.ft_auth_operation_for(signer.pub),
+        op
+    ).sign(signer.priv).run();
+}
+
+function expect_failure(rell.test.op, signer: rell.test.keypair, text) {
+    rell.test.tx().op(
+        test.ft_auth_operation_for(signer.pub),
+        op
+    ).sign(signer.priv).run_must_fail(text);
+}
+
+function create_pool(
+    amount1: big_integer,
+    amount_ccy: big_integer,
+    coin_name: text = "dollar",
+) {
+    val trudy = get_account(rell.test.keypairs.trudy.pub);
+    val coin = get_asset(coin_name, 18);
+    val ccy = main.ccy.asset;
+
+    give_balance(trudy, coin, amount1);
+    give_balance(trudy, ccy, amount_ccy);
+
+    run(
+        external.add_liq(
+            coin.id,
+            amount1,
+            amount_ccy
+        ),
+        rell.test.keypairs.trudy
+    );
+
+    return pairs.pair @ { coin.id };
+}
+
+function create_order(
+    pairs.pair,
+    buy_ccy: boolean,
+    amount: big_integer,
+    price: big_integer,
+    deadline: timestamp = ft_utils.latest_time() + 100000,
+    keypair: rell.test.keypair = rell.test.keypairs.trudy
+) {
+    val trudy = get_account(keypair.pub);
+    val coin = if (buy_ccy) pair.asset1 else main.ccy.asset;
+
+    give_balance(trudy, coin, amount);
+
+    run(
+        external.place_order(
+            pair.asset1.id,
+            buy_ccy,
+            amount,
+            price,
+            deadline
+        ),
+        keypair
+    );
+}

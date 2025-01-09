@@ -1,0 +1,34 @@
+import main;
+
+query get_chain_stats() {
+  return main.chain_stats.to_struct();
+}
+
+query get_pair_info(asset: byte_array) {
+    val pair = pairs.get_pair(asset);
+    return utils.extract_pair_info(pair.to_struct(), pair.rowid).data;
+}
+
+query get_all_pairs_by_liquidity(
+    name_start: text,
+    symbol_start: text,
+    id_start: byte_array,
+    page_size: integer?,
+    page_cursor: text?
+) {
+    val before_rowid = ft_utils.before_rowid(page_cursor);
+    val id_plus_one = (big_integer.from_bytes_unsigned(id_start) + 1L).to_bytes_unsigned();
+    return ft_utils.make_page(
+        pairs.pair @* { 
+            if (name_start == "") true else .name.like(name_start.lower_case()+"%"),
+            if (symbol_start == "") true else .symbol.like(symbol_start.lower_case()+"%"),
+            if (id_start == x"") true else .id>=id_start and .id<id_plus_one,
+            
+            .rowid > (before_rowid ?: rowid(0))
+        } (
+          @omit @sort_desc .amount_ccy,
+          utils.extract_pair_info($.to_struct(), .rowid)
+        ) limit ft_utils.fetch_data_size(page_size),
+        page_size
+    );
+}

@@ -1,0 +1,34 @@
+blockchains:
+  sweetest_dex_on_chromia:
+    module: main
+
+libs:
+  ft4:
+    registry: https://gitlab.com/chromaway/ft4-lib.git
+    path: rell/src/lib/ft4
+    tagOrBranch: v1.0.0r
+    rid: x"FA487D75E63B6B58381F8D71E0700E69BEDEAD3A57D1E6C1A9ABB149FAC9E65F"
+    insecure: false
+  iccf:
+    registry: https://gitlab.com/chromaway/core/directory-chain
+    path: src/iccf
+    tagOrBranch: 1.32.2
+    rid: x"1D567580C717B91D2F188A4D786DB1D41501086B155A68303661D25364314A4D"
+    insecure: false
+
+deployments:
+  testnet: # Deployment Target name
+    brid: x"6F1B061C633A992BF195850BF5AA1B6F887AEE01BB3F51251C230930FB792A92" # Blockchain RID for Testnet Directory Chain
+    url: https://node0.testnet.chromia.com:7740 # Target URL for one of the nodes in Testnet
+    container: e04176fb4729d927088c9003b892ce052bc1f0417d225fae7d4b16df2ef1c8aa
+    chains:
+      sweetest_dex_on_chromia: x"FA289E086E3D6C3277336E270BADDF75035C1F049F242AB2CF61773D2822213D"
+
+compile:
+  rellVersion: 0.14.0
+
+test:
+  modules:
+    - test.test_pairs
+    - test.test_swaps
+    - test.test_orders

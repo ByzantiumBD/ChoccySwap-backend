@@ -1,0 +1,394 @@
+@test module;
+
+import ^^.main;
+import ^^.pairs;
+import ^^.utils;
+import ^^.orderbook;
+import ft_utils: lib.ft4.utils;
+import lib.ft4.assets;
+import tu: ^.test_utils;
+import tops: ^.test_operations;
+import ext: ^^.external;
+
+function test_order() {
+    val alice = tu.get_account(rell.test.keypairs.alice.pub);
+    val p = tu.create_pool(
+        10000L, 10000L
+    );
+
+    val curr_price = pairs.calc_price(p.amount1, p.amount_ccy, false);
+    assert_equals(curr_price, pairs.PRICE_PRECISION);
+
+    tu.give_balance(alice, p.asset1, 10000L);
+
+    tu.expect_failure(
+        ext.place_order(
+            p.id,
+            true,
+            10001L,
+            curr_price - 1,
+            ft_utils.latest_time() + 10000
+        ),
+        rell.test.keypairs.alice,
+        "Balance is too low"
+    );
+
+    tu.expect_failure(
+        ext.place_order(
+            p.id,
+            true,
+            10000L,
+            curr_price + 1,
+            ft_utils.latest_time() + 10000
+        ),
+        rell.test.keypairs.alice,
+        "Spot price is better than the order price. Place a spot order instead."
+    );
+
+    tu.expect_failure(
+        ext.place_order(
+            p.id,
+            true,
+            10000L,
+            curr_price,
+            ft_utils.latest_time() + 10000
+        ),
+        rell.test.keypairs.alice,
+        "Spot price is better than the order price. Place a spot order instead."
+    );
+
+    tu.run(
+        ext.place_order(
+            p.id,
+            true,
+            10000L,
+            curr_price - 1L,
+            ft_utils.latest_time() + 10000
+        ),
+        rell.test.keypairs.alice
+    );
+
+    val all_orders = orderbook.order @* {};
+    assert_equals(all_orders.size(), 1);
+    assert_equals(
+        all_orders @ {} (.pair, .price, .buy_ccy, .amount),
+        (pair=p, price=curr_price-1L, buy_ccy=true, amount=10000L)
+    );
+}
+
+function test_swaps_use_orders() {
+    val alice = tu.get_account(rell.test.keypairs.alice.pub);
+    val p = tu.create_pool(
+        10000L, 10000L
+    );
+
+    // simulating a swap of 10k, 5k into pool and 5k into an order
+    
+    val price_after_5k_dollars_sold = pairs.pair_functions.calc_swap_end_price_and_output(
+        p.to_struct(), 5000L, true
+    ).end_price;
+    val amount_worth_5k_dollars = 5000L*pairs.PRICE_PRECISION/price_after_5k_dollars_sold;
+
+    // 10k + 10k gives k = 100M
+    // with 15k in liq on one side, 6666 on the other
+    // 3334 output, with fee of 3perthousand means 10 is fee
+    // output pairs: 15k, 6676. Price: 2.246854...
+    assert_equals(price_after_5k_dollars_sold, pairs.calc_price(15000L, 6676L, false));
+    assert_equals(price_after_5k_dollars_sold, 15000L*pairs.PRICE_PRECISION/6676L);
+
+    tu.create_order(
+        p, false, amount_worth_5k_dollars, price_after_5k_dollars_sold
+    );
+
+    tu.give_balance(alice, p.asset1, 10001L);
+
+    tu.expect_failure(
+        ext.swap(
+            p.asset1.id,
+            true,
+            20000L, // too much
+            3324L + amount_worth_5k_dollars,
+            ft_utils.latest_time() + 100000
+        ),
+        rell.test.keypairs.alice,
+        "Balance is too low"
+    );
+
+    tu.expect_failure(
+        ext.swap(
+            p.asset1.id,
+            true,
+            10000L,
+            3324L + amount_worth_5k_dollars + 1L, // too much
+            ft_utils.latest_time() + 100000
+        ),
+        rell.test.keypairs.alice,
+        "Amount received too small, the price went out of range"
+    );
+
+    tu.run(
+        ext.swap(
+            p.asset1.id,
+            true,
+            10000L,
+            3324L + amount_worth_5k_dollars,
+            ft_utils.latest_time() + 100000
+        ),
+        rell.test.keypairs.alice
+    );
+}
+
+function test_sell_ccy() {
+    val alice = tu.get_account(rell.test.keypairs.alice.pub);
+    val p = tu.create_pool(
+        10000L, 10000L
+    );
+
+    // simulating a swap of 10k, 5k into pool and 5k into an order
+    
+    val price_after_5k_ccy_sold = pairs.pair_functions.calc_swap_end_price_and_output(
+        p.to_struct(), 5000L, false
+    ).end_price;
+    val amount_worth_5k_ccy = 5000L*price_after_5k_ccy_sold/pairs.PRICE_PRECISION;
+    
+    tu.create_order(
+        p, true, amount_worth_5k_ccy, price_after_5k_ccy_sold
+    );
+
+    tu.give_balance(alice, main.ccy.asset, 10001L);
+
+    tu.expect_failure(
+        ext.swap(
+            p.asset1.id,
+            false,
+            20000L, // too much
+            3324L + amount_worth_5k_ccy,
+            ft_utils.latest_time() + 100000
+        ),
+        rell.test.keypairs.alice,
+        "Balance is too low"
+    );
+
+    tu.expect_failure(
+        ext.swap(
+            p.asset1.id,
+            false,
+            10000L + 1L, // rounding error 
+            3324L + amount_worth_5k_ccy + 1L, // too much
+            ft_utils.latest_time() + 100000
+        ),
+        rell.test.keypairs.alice,
+        "Amount received too small, the price went out of range"
+    );
+
+    tu.run(
+        ext.swap(
+            p.asset1.id,
+            false,
+            10000L + 1L, // rounding error
+            3324L + amount_worth_5k_ccy,
+            ft_utils.latest_time() + 100000
+        ),
+        rell.test.keypairs.alice
+    );
+}
+
+function test_swaps_with_multiple_orders() {
+    val alice = tu.get_account(rell.test.keypairs.alice.pub);
+    val p = tu.create_pool(
+        10000L, 10000L
+    );
+
+    /*
+     simulating a swap of 10k:
+     1k into pool
+     2k into order
+     3k into pool
+     4k into two orders, half filling one (1k; 3k/6k)
+     */
+    
+    val price_after_1k_dollars_sold = pairs.pair_functions.calc_swap_end_price_and_output(
+        p.to_struct(), 1000L, true
+    ).end_price;
+
+    val amount_worth_2k_dollars = 2000L*pairs.PRICE_PRECISION/price_after_1k_dollars_sold;
+
+    val last_swap = pairs.pair_functions.calc_swap_end_price_and_output(
+        p.to_struct(), 1000L + 3000L, true
+    );
+
+    val price_after_6k_dollars_sold = last_swap.end_price;
+
+    val amount_worth_1k_dollars = 1000L*pairs.PRICE_PRECISION/price_after_6k_dollars_sold;
+    val amount_worth_6k_dollars = 6000L*pairs.PRICE_PRECISION/price_after_6k_dollars_sold;
+
+    tu.create_order(
+        p, false, amount_worth_2k_dollars, price_after_1k_dollars_sold
+    );
+    tu.create_order(
+        p, false, amount_worth_1k_dollars, price_after_6k_dollars_sold
+    );
+    tu.create_order(
+        p,
+        false,
+        amount_worth_6k_dollars,
+        price_after_6k_dollars_sold,
+        keypair = rell.test.keypairs.bob
+    );
+
+    val all_orders = orderbook.order @* {};
+    assert_equals(all_orders.size(), 3);
+    
+    tu.give_balance(alice, p.asset1, 10000L);
+
+    val expected_amount_out = 
+        last_swap.out_amount +
+        amount_worth_1k_dollars +
+        amount_worth_2k_dollars +
+        amount_worth_6k_dollars / 2;
+
+    tu.run(
+        ext.swap(
+            p.asset1.id,
+            true,
+            10000L,
+            expected_amount_out,
+            ft_utils.latest_time() + 100000
+        ),
+        rell.test.keypairs.alice
+    );
+
+    assert_equals(orderbook.order @* {} (.amount), [amount_worth_6k_dollars / 2]);
+}
+
+
+function test_orders_get_deleted_after_expiration() {
+    val alice = tu.get_account(rell.test.keypairs.alice.pub);
+    val bob = tu.get_account(rell.test.keypairs.bob.pub);
+    val p = tu.create_pool(
+        10000L, 10000L
+    );
+    val next_price = pairs.pair_functions.calc_swap_end_price_and_output(
+        p.to_struct(),
+        100L,
+        false
+    ).end_price;
+
+    val time = ft_utils.latest_time();
+    val deadlines = [
+        time+100000,
+        time+200000,
+        time+300000,
+    ];
+
+    tu.create_order(
+        p, true, 100L, 1L, deadline=deadlines[0], keypair=rell.test.keypairs.alice
+    );
+    tu.create_order(
+        p, true, 100L, next_price, deadline=deadlines[1], keypair=rell.test.keypairs.alice
+    );
+    tu.create_order(
+        p, true, 100L, 3L, deadline=deadlines[2], keypair=rell.test.keypairs.alice
+    );
+
+    rell.test.set_block_interval(1);
+    rell.test.set_next_block_time(deadlines[0]+1);
+    rell.test.block().run();
+
+    assert_equals((orderbook.order @* {}).size(), 3);
+    tu.run(
+        tops.empty_auth(),
+        rell.test.keypairs.alice
+    );
+
+    // expired order deleted
+    assert_equals((orderbook.order @* {}).size(), 2);
+
+    rell.test.set_next_block_time(deadlines[1]+1);
+    rell.test.block().run();
+
+    assert_equals((orderbook.order @* {}).size(), 2);
+    tu.run(
+        tops.empty_auth(),
+        rell.test.keypairs.bob
+    );
+
+    // expired order not deleted since Bob is not the owner
+    assert_equals((orderbook.order @* {}).size(), 2);
+
+    tu.give_balance(bob, main.ccy.asset, 200L);
+    tu.run(
+        ext.swap(
+            p.id,
+            false,
+            10L,
+            0L,
+            ft_utils.latest_time() + 10000
+        ),
+        rell.test.keypairs.bob
+    );
+
+    // expired order not deleted since it was outside the price range
+    assert_equals((orderbook.order @* {}).size(), 2);
+
+    tu.run(
+        ext.swap(
+            p.id,
+            false,
+            100L,
+            0L,
+            ft_utils.latest_time() + 10000
+        ),
+        rell.test.keypairs.bob
+    );
+
+    // expired order deleted since it was inside the price range
+    assert_equals((orderbook.order @* {}).size(), 1);
+}
+
+function test_max_order_number() {
+    val alice = tu.get_account(rell.test.keypairs.alice.pub);
+    val bob = tu.get_account(rell.test.keypairs.bob.pub);
+
+    val p = tu.create_pool(
+        10000L, 10000L
+    );
+    tu.give_balance(alice, p.asset1, 220L);
+    
+    tu.create_order(
+        p, true, 100L, 1L, keypair=rell.test.keypairs.alice
+    );
+
+    tu.expect_failure(
+        ext.place_order(
+            p.id, true, 120L, 1L, ft_utils.latest_time() + 10000
+        ),
+        rell.test.keypairs.alice,
+        "An order for this price and this account already exists on this pair."
+    );
+
+    tu.create_order(
+        p, true, 100L, 2L, keypair=rell.test.keypairs.alice
+    );
+    tu.create_order(
+        p, true, 100L, 3L, keypair=rell.test.keypairs.alice
+    );
+    tu.create_order(
+        p, true, 100L, 4L, keypair=rell.test.keypairs.alice
+    );
+    tu.create_order(
+        p, true, 100L, 5L, keypair=rell.test.keypairs.alice
+    );
+
+    tu.expect_failure(
+        ext.place_order(
+            p.id, true, 100L, 6L, ft_utils.latest_time() + 10000
+        ),
+        rell.test.keypairs.alice,
+        "Too many orders have been placed on this pair from this account."
+    );
+
+    tu.create_order(
+        p, true, 100L, 1L, keypair=rell.test.keypairs.bob
+    );
+}

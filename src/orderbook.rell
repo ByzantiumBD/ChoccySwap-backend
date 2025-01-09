@@ -1,0 +1,241 @@
+module;
+
+import ^.utils;
+import ^.main;
+import ^.pairs;
+import lib.ft4.accounts;
+import lib.ft4.assets;
+import lib.ft4.auth;
+import ft_utils: lib.ft4.utils;
+
+val ACC_TYPE_ORDER = "CCY_ORDER";
+
+entity order {
+    index pairs.pair;
+    index accounts.account;
+    order_acc: accounts.account;
+    index price: big_integer;
+    index buy_ccy: boolean;
+    /** if (buy_ccy) amount1 else amount_ccy */
+    mutable amount: big_integer;
+    deadline: timestamp;
+
+    /** only one entry per account and pair at a certain price */
+    key account, pair, price;
+    key id: byte_array;
+}
+
+function get_order_id(accounts.account, pairs.pair, price: big_integer) {
+    return (account.id, pair.id, price).hash();
+}
+
+function get_order_account_id(accounts.account) {
+    return (account.id, ACC_TYPE_ORDER).hash();
+}
+
+function add_order(
+    accounts.account,
+    pair_id: byte_array,
+    price: big_integer,
+    buy_ccy: boolean,
+    amount: big_integer,
+    deadline: timestamp,
+) {
+    require(
+        op_context.last_block_time <= deadline,
+        "Order already expired. Deadline: <%s>, timestamp: <%s>".format(
+            deadline, op_context.last_block_time
+        )
+    );
+    require(amount > 0, "Amount must be greater than 0: " + amount);
+
+    val p = pairs.get_pair(pair_id);
+    val curr_price = utils.get_price(p.to_struct());
+
+    val condition = if (buy_ccy) curr_price > price else curr_price < price;
+
+    require(condition, "Spot price is better than the order price. Place a spot order instead.");
+
+    val order_acc = accounts.ensure_account_without_auth(
+        get_order_account_id(account),
+        ACC_TYPE_ORDER
+    );
+
+    // lock the funds
+    assets.Unsafe.transfer(
+            account,
+            order_acc,
+            if (buy_ccy) p.asset1 else main.ccy.asset,
+            amount
+        );
+
+    create order (
+        get_order_id(account, p, price),
+        p,
+        account,
+        order_acc,
+        price,
+        buy_ccy,
+        amount,
+        deadline
+    );
+}
+
+function remove_order(order) {
+    // unlock the funds
+    assets.Unsafe.transfer(
+            order.order_acc,
+            order.account,
+            if (order.buy_ccy) order.pair.asset1 else main.ccy.asset,
+            order.amount
+        );
+
+    delete order;
+}
+
+/*
+ * Deletes expired orders in that range.
+ * If p1 > p2 (in X/CCY) it's selling CCY
+ * If p2 > p1 (in X/CCY) it's buying CCY
+ */
+function get_orders_in_inclusive_range_ordered(p1: big_integer, p2: big_integer) {
+    val buy_ccy = p2 > p1;
+    
+    var orders = list<struct<order>>();
+    if (buy_ccy) {
+        orders = order @* {
+            .price >= p1,
+            .price <= p2,
+            .buy_ccy == not buy_ccy
+        } ( 
+            $.to_struct()
+        );
+    } else {
+        orders = order @* {
+            .price <= p1,
+            .price >= p2,
+            .buy_ccy == not buy_ccy
+        } (
+            @omit @sort_desc .price,
+            $.to_struct()
+        );
+    }
+    val time = ft_utils.latest_time();
+    val expired = set<byte_array>(
+        orders @* {
+            .deadline < time
+        } ( .id )
+    );
+
+    order @* { .id in expired } (remove_order($));
+    return orders @* { .id not in expired };
+}
+
+function swap_with_orderbook(
+    accounts.account,
+    pair: pairs.pair,
+    buy_ccy: boolean,
+    amount: big_integer,
+    amount_min: big_integer,
+) {
+    var to_pay = amount;
+    var received = 0L;
+
+    val pair_at_start_struct = pair.to_struct();
+
+    val curr_price = utils.get_price(pair_at_start_struct);
+    var executed_orders = 0;
+    var partially_filled_order = false;
+    var last_processed = -1;
+
+    // retrieve all orders in the price range of the swap with only AMM
+    // excessive, but necessary, as it's better to query once, with too many orders returned,
+    // than many times, one order per query
+    val (
+        theoretical_end_price,
+        amm_out_amount
+    ) = pairs.pair_functions.calc_swap_end_price_and_output(
+        pair_at_start_struct,
+        amount,
+        buy_ccy
+    );
+
+    var orders = get_orders_in_inclusive_range_ordered(
+        curr_price,
+        theoretical_end_price,
+    );
+
+    val order_last_idx = orders.size() - 1;
+
+    var safety = 0L;
+    while (to_pay > 0L) {
+        var am_to_next = 0L;
+        if (order_last_idx > last_processed) {
+            val next_stop = orders[last_processed + 1].price;
+            am_to_next = pairs.pair_functions.calc_swap_amount_to_price(
+                pair,
+                next_stop,
+                buy_ccy,
+            );
+        } else {
+            am_to_next = to_pay;
+        }
+
+        if (am_to_next >= to_pay) {
+            val rec = utils.spend_on_pair(account,pair,buy_ccy,to_pay);
+
+            to_pay = 0;
+            received += rec;
+        } else {
+            if (am_to_next != 0) {
+                val rec = utils.spend_on_pair(account,pair,buy_ccy,am_to_next);
+                to_pay -= am_to_next;
+                received += rec;
+            }
+
+            last_processed += 1;
+            val order_to_process = orders[last_processed];
+            val (spent, rec) = utils.spend_on_order(
+                account,
+                order_to_process,
+                to_pay
+            );
+
+            if (order_to_process.amount < rec) {
+                require(
+                    not partially_filled_order,
+                    "More than one order has been left partially executed"
+                );
+                partially_filled_order = true;
+            } else {
+                executed_orders++;
+            }
+            to_pay -= spent;
+            received += rec;
+        }
+
+        if (safety == to_pay and to_pay < 10L) {
+            require (to_pay >= 0L, "Negative to_pay!");
+            to_pay = 0L;
+        }
+        safety = to_pay;
+    }
+
+    if (received < amount_min) {
+        val asset = if (buy_ccy) main.ccy.asset else pair.asset1;
+        require(
+            false,
+            ("Swap for <%s>. Amount received too small, the price went out of range. "+
+            "Expected <%s> but received <%s>").format(
+                asset.symbol,
+                assets.format_amount_with_decimals(amount_min, asset.decimals),
+                assets.format_amount_with_decimals(received, asset.decimals)
+            )
+        );
+    }
+
+    update main.chain_stats (
+        executed_swaps += 1,
+        executed_orders += executed_orders,
+    );
+}

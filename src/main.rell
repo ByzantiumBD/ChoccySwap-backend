@@ -1,0 +1,111 @@
+module;
+
+import lib.ft4.prioritization;
+import lib.ft4.assets;
+import lib.ft4.accounts;
+import lib.ft4.accounts.strategies;
+import external;
+import extensions;
+import pairs;
+import orderbook;
+import vault_support;
+
+object chain_stats {
+    mutable executed_orders: integer = 0;
+    mutable executed_swaps: integer = 0;
+    mutable registered_accounts: integer = 0;
+    mutable registered_assets: integer = 0;
+    mutable registered_pairs: integer = 0;
+}
+
+object ccy {
+    assets.asset = register_asset_if_needed("Choccy", "CCY", 18, "https://choccyswap.com/coin.svg");
+}
+
+operation init() {
+    if ((pairs.pair @? {} limit 1)??) require(false, "Already initialized");
+    val favorites = [
+        register_asset_if_needed("Chroma","CHR",6,"https://assets.coingecko.com/coins/images/5000/small/Chromia.png?1559038018"),
+        register_asset_if_needed("TetherUSD", "USDT", 18, "https://assets.coingecko.com/coins/images/325/standard/Tether.png?1696501661"),
+        register_asset_if_needed("USDCoin", "USDC", 18, "https://assets.coingecko.com/coins/images/6319/standard/usdc.png?1696506694"),
+        register_asset_if_needed("Ethereum", "ETH", 18, "https://assets.coingecko.com/coins/images/279/standard/ethereum.png?1696501628"),
+        register_asset_if_needed("BNB", "BNB", 18, "https://assets.coingecko.com/coins/images/825/standard/bnb-icon2_2x.png?1696501970"),
+    ];
+    register_asset_if_needed("Random1", "RND1", 6, "https://example.com/");
+    register_asset_if_needed("Random2", "RND2", 6, "https://example.com/");
+    register_asset_if_needed("Random3", "RND3", 6, "https://example.com/");
+
+    print("\n\n\n\n\n\n");
+    print("=============================================================");
+    print("BRID: " + chain_context.blockchain_rid);
+    print("ASSET IDs:\n");
+    val all_assets = assets.asset @* { };
+    for (a in all_assets) {
+        print("\t" + a.name + ": " + a.id.to_hex());
+    }
+    print("=============================================================");
+    print("\n\n\n\n\n\n");
+    print("=============================================================");
+    print("Write on utils.ts:\n\nexport const CCY_ID = '%s';".format(ccy.asset.id.to_hex()));
+    print("\nexport const ASSET_IDS = [\n\tCCY_ID,");
+    for (a in favorites) {
+        print("\t'%s',".format(
+            a.id.to_hex(),
+        ));
+    }
+    print("];");
+    print("=============================================================");
+    print("\n\n\n\n\n\n");
+
+    val system = accounts.create_account_without_auth(
+        "choccy testnet system pair creator account".hash(),
+        "CCY SYSTEM ACCOUNT"
+    );
+    
+    for (a in all_assets @* { .name != "Choccy" }) {
+        assets.Unsafe.mint(
+            system,
+            a,
+            big_integer("10000" + "0".repeat(a.decimals))
+        );
+        assets.Unsafe.mint(
+            system,
+            ccy.asset,
+            big_integer("10000" + "0".repeat(ccy.asset.decimals))
+        );
+        pairs.UNSAFE.create_liq(
+            a,
+            assets.balance @ { system, a } .amount,
+            assets.balance @ { system, ccy.asset } .amount,
+            system
+        );
+    }
+}
+
+function register_asset_if_needed(
+    asset_name: name,
+    symbol: text,
+    decimals: integer,
+    icon_url: text
+): assets.asset {
+    // derive id of the asset
+    val asset_id = (asset_name, chain_context.blockchain_rid).hash();
+    // check if asset already exist
+    val a = assets.asset @ ? { .id == asset_id };
+    if (a??)
+        return a;
+
+    chain_stats.registered_assets += 1;
+    return assets.Unsafe.register_asset(
+            asset_name,
+            symbol,
+            decimals,
+            chain_context.blockchain_rid,
+            icon_url,
+        );
+}
+
+@extend(strategies.after_register_account)
+function (accounts.account) {
+    chain_stats.registered_accounts += 1;
+}

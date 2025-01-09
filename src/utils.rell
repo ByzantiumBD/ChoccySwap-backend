@@ -1,0 +1,209 @@
+module;
+
+import lib.ft4.accounts;
+import lib.ft4.assets;
+import lib.ft4.utils;
+import ^.orderbook;
+import ^.pairs;
+import ^.main;
+import ^.external;
+
+val transfer_op_name = rell.meta(assets.external.transfer).mount_name;
+
+val ORDER_FEE_PERTHOU = 3L;
+val SWAP_FEE_PERTHOU = 3L;
+
+val ASSET_TYPE_LP = "CCY_LP_TOKEN";
+
+entity last_mint {
+    key accounts.account;
+    mutable timestamp = 0;
+}
+
+function limit_mints(accounts.account, timestamp) {
+    val last = last_mint @? { account };
+    if (last??) {
+        require(
+            timestamp >= (last.timestamp + 3600000),
+            "You can't mint more than once per hour"
+        );
+        last.timestamp = timestamp;
+    } else {
+        create last_mint ( account, timestamp );
+    }
+}
+
+function extract_order_info(order: struct<orderbook.order>, rowid) {
+    val p = order.pair.to_struct();
+    return utils.pagination_result(
+        data = (
+            id = order.id,
+            pair = extract_pair_info(p, rowid(0)).data,
+            account_id = order.account.id,
+            price = order.price,
+            buy_ccy = order.buy_ccy,
+            amount = order.amount,
+            deadline = order.deadline
+        ).to_gtv_pretty(),
+        rowid
+    );
+}
+
+function extract_pair_info(pair: struct<pairs.pair>, rowid) {
+    return utils.pagination_result(
+        data = (
+            id = pair.id,
+            name = get_pair_name(pair),
+            asset1 = assets.map_asset(pair.asset1),
+            amount1 = pair.amount1,
+            amount_ccy = pair.amount_ccy,
+            lp_token = assets.map_asset(pair.lp_token),
+        ).to_gtv_pretty(),
+        rowid
+    );
+}
+
+function get_pair_name(pair: struct<pairs.pair>) {
+    return "%s - %s".format(pair.asset1.symbol, main.ccy.asset.symbol);
+}
+
+function get_price(pair: struct<pairs.pair>) {
+    return (pairs.PRICE_PRECISION * pair.amount1) / pair.amount_ccy;
+}
+
+/** 
+ * Updates the pair to ensure proper calculations at all times.
+ * @return the amount received
+ */
+function spend_on_pair(
+    accounts.account,
+    pair: pairs.pair,
+    buy_ccy: boolean,
+    amount: big_integer
+) {
+    require(amount > 0, "Amount must be greater than 0: " + amount);
+    val asset1 = pair.asset1;
+
+    val to_amount = pairs.with_fees.calc_swap_output(
+            if (buy_ccy) pair.amount1 else pair.amount_ccy,
+            if (buy_ccy) pair.amount_ccy else pair.amount1,
+            amount
+        );
+    require(to_amount > 0, "to amount must be greater than 0: " + to_amount);
+
+    assets.Unsafe.transfer(
+            account,
+            pair.account,
+            if (buy_ccy) asset1 else main.ccy.asset,
+            amount
+        );
+
+    assets.Unsafe.transfer(
+            pair.account,
+            account,
+            if (buy_ccy) main.ccy.asset else asset1,
+            to_amount
+        );
+
+    return to_amount;
+}
+
+/**
+ * @param amount    always in the asset that the order maker receives. If buy_ccy, in CCY
+ */
+function spend_on_order(
+    accounts.account,
+    order_struct: struct<orderbook.order>,
+    amount: big_integer
+): (spent:big_integer, received:big_integer) {
+    require(amount > 0, "Amount must be greater than 0: " + amount);
+    val asset1 = order_struct.pair.asset1;
+
+    val order_worth = if (order_struct.buy_ccy) 
+        order_struct.amount * pairs.PRICE_PRECISION /  order_struct.price
+        else
+        order_struct.amount * order_struct.price / pairs.PRICE_PRECISION;
+
+    val input = min(amount, order_worth);
+    val output = if (order_struct.buy_ccy)
+        input * order_struct.price / pairs.PRICE_PRECISION
+        else
+        input * pairs.PRICE_PRECISION /  order_struct.price;
+
+    require(amount > 0, "Output must be greater than 0: " + output);
+    val (remainder, fee) = split_amount_for_fee(true, output);
+
+    assets.Unsafe.transfer(
+            account,
+            order_struct.account,
+            if (order_struct.buy_ccy) main.ccy.asset else asset1,
+            input
+        );
+        
+    assets.Unsafe.transfer(
+            order_struct.order_acc,
+            account,
+            if (order_struct.buy_ccy) asset1 else main.ccy.asset,
+            remainder,
+        );
+
+    assets.Unsafe.transfer(
+            order_struct.order_acc,
+            order_struct.pair.account,
+            if (order_struct.buy_ccy) asset1 else main.ccy.asset,
+            fee,
+        );
+
+    if (input == order_worth) {
+        delete orderbook.order @ { .id == order_struct.id };
+    } else {
+        update orderbook.order @ { .id == order_struct.id } ( amount -= output );
+    }
+    return (spent = input, received = output);
+}
+
+function split_amount_for_fee(is_order: boolean, amount: big_integer) {
+    val fee_perthou = if (is_order) ORDER_FEE_PERTHOU else SWAP_FEE_PERTHOU;
+
+    val fee_amount = amount * fee_perthou / 1000L;
+    return (remainder = amount - fee_amount, fee = fee_amount);
+}
+
+function register_asset_with_uniqueness(
+    name,
+    symbol: text,
+    decimals: integer,
+    icon_url: text,
+    uniqueness_resolver: byte_array,
+    type: text = ASSET_TYPE_LP
+): assets.asset {
+    assets.validate_asset_decimals(decimals);
+    assets.validate_asset_name(name);
+    assets.validate_asset_symbol(symbol);
+    assets.validate_asset_type(type);
+
+    val id = (name, chain_context.blockchain_rid).hash();
+    return create assets.asset (
+        id,
+        name,
+        symbol,
+        decimals,
+        uniqueness_resolver,
+        issuing_blockchain_rid = chain_context.blockchain_rid,
+        icon_url = assets.parse_icon_url(icon_url),
+        type,
+        total_supply = 0L
+    );
+}
+
+function register_lp(
+    assets.asset
+) {
+    return register_asset_with_uniqueness(
+        "%s LP token".format(asset.symbol),
+        "LP",
+        18,
+        "https://choccyswap.com/logo_lp.svg",
+        "LP provider for asset ID %s on Choccyswap".format(asset.id).to_bytes()
+    );
+}

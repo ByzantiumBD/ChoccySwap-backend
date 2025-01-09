@@ -1,0 +1,245 @@
+module;
+
+import main;
+import utils;
+import lib.ft4.accounts;
+import lib.ft4.assets;
+
+val PRICE_PRECISION = assets.max_asset_amount; //2^256-1
+val LP_TOKEN_DECIMALS = 18;
+val ACC_TYPE_POOL = "CCY_LIQ_POOL";
+
+entity pair {
+    index name;
+    index symbol: text;
+    key id: byte_array;
+
+    asset1: assets.asset;
+    mutable amount1: big_integer;
+    index mutable amount_ccy: big_integer;
+    key lp_token: assets.asset;
+    key account: accounts.account;
+    index account;
+}
+
+function sqrt(x: big_integer): big_integer {
+    require(x >= 0, "Can't compute the square root of a negative number");
+    var L = 0L;
+    var M: big_integer;
+    var R = x + 1L;
+
+    while (L != R - 1) {
+        M = (L + R) / 2;
+        if (M * M <= x) {
+            L = M;
+        } else {
+            R = M;
+        }
+    }
+
+    return L;
+}
+
+function get_pair_or_null(id: byte_array) {
+    return pair @? { id };
+}
+
+function get_pair(id: byte_array) {
+    val p = pair @? { id };
+    require(p??, "Pair not found");
+    return p;
+}
+
+namespace theoretical {
+    // dC
+    function calc_swap_output(
+        amount_start_1: big_integer,
+        amount_start_2: big_integer,
+        amount_in_1: big_integer
+    ) {
+        return amount_start_2 - (
+            (amount_start_1 * amount_start_2) / (amount_start_1 + amount_in_1)
+        );
+    }
+
+    // p1, dC
+    function calc_swap_end_price_and_output(
+        amount_start_1: big_integer,
+        amount_start_2: big_integer,
+        amount_in_1: big_integer,
+        invert_price: boolean,
+    ) {
+        val swap_output = calc_swap_output(amount_start_1, amount_start_2, amount_in_1);
+        val amount_end_1 = (amount_start_1 + amount_in_1);
+        val amount_end_2 = (amount_start_2 - swap_output);
+        val end_price = calc_price(amount_end_1, amount_end_2, invert_price);
+        return (end_price = end_price, out_amount = swap_output);
+    }
+
+    // dA(p1)
+    function calc_swap_amount_to_price(
+        amount_start_1: big_integer,
+        amount_start_2: big_integer,
+        end_price: big_integer
+    ) {
+        val k = amount_start_1 * amount_start_2;
+        return sqrt((k * end_price) / PRICE_PRECISION) - amount_start_1;
+    }
+}
+
+namespace with_fees {
+    // **/. dC
+    function calc_swap_output(
+        amount_start_1: big_integer,
+        amount_start_2: big_integer,
+        amount_in_1: big_integer
+    ) {
+        return utils.split_amount_for_fee(
+            false,
+            theoretical.calc_swap_output(
+                amount_start_1,
+                amount_start_2,
+                amount_in_1
+            )
+        ).remainder;
+    }
+
+    // p2, **/.dC
+    function calc_swap_end_price_and_output(
+        amount_start_1: big_integer,
+        amount_start_2: big_integer,
+        amount_in_1: big_integer,
+        invert_price: boolean,
+    ) {
+        val swap_output = calc_swap_output(amount_start_1, amount_start_2, amount_in_1);
+        val amount_end_1 = (amount_start_1 + amount_in_1);
+        val amount_end_2 = (amount_start_2 - swap_output);
+        val end_price = calc_price(amount_end_1, amount_end_2, invert_price);
+        return (end_price = end_price, out_amount = swap_output);
+    }
+
+    // dA(p2)
+    function calc_swap_amount_to_price(
+        amount_start_1: big_integer,
+        amount_start_2: big_integer,
+        end_price: big_integer
+    ) {
+        /**
+         * p2 = A1/C2
+         * A0 + dA = C2*p2
+         * 
+         * C2 = C0 - 997‰dC
+         * dC = C0 - k/A1
+         * 
+         * C2 = 3‰C0 + 997‰k/A1
+         * 
+         * A0 + dA = ( 3‰C0 + 997‰k/A1 )*p2
+         * A1 = A0 + dA
+         * 
+         * solve for dA
+         * 
+         * ...
+         * 
+         * 2nd degree (ax² + bx + c = 0)
+         * a: 1
+         * b: 2*A0 - 3‰*C0*p2
+         * c: A0² - k*p2
+         * 
+         * solution with +Δ are correct
+         * solution with -Δ are always negative
+         */
+        val b = 2*amount_start_1 - utils.split_amount_for_fee(
+            false,
+            amount_start_2*end_price/PRICE_PRECISION
+        ).fee;
+        val c = 
+            amount_start_1*amount_start_1 - 
+            (amount_start_1*amount_start_2*end_price/PRICE_PRECISION);
+
+        return (-b + sqrt(b*b - 4*c))/2;
+    }
+}
+
+namespace pair_functions {
+    /**
+     * If buy_ccy, for a pair ($ => CCY), it will assume amount_in to be in $.
+     * If not buy_ccy, it will assume amount_in to be in CCY.
+     * Then, the price calculated will still be in $/CCY.
+     * This is because orders always have price in `asset1/CCY`, regardless of `buy_ccy`.
+     */
+    function calc_swap_end_price_and_output(pair: struct<pair>, amount_in: big_integer, buy_ccy: boolean) {
+        val one = if (buy_ccy) pair.amount1 else pair.amount_ccy;
+        val two = if (buy_ccy) pair.amount_ccy else pair.amount1;
+        return with_fees.calc_swap_end_price_and_output(one, two, amount_in, not buy_ccy);
+    }
+
+    function calc_swap_amount_to_price(pair: pair, end_price: big_integer, buy_ccy: boolean) {
+        val one = if (buy_ccy) pair.amount1 else pair.amount_ccy;
+        val two = if (buy_ccy) pair.amount_ccy else pair.amount1;
+        val price = if (buy_ccy) end_price else PRICE_PRECISION*PRICE_PRECISION/end_price;
+        return with_fees.calc_swap_amount_to_price(one, two, price);
+    }
+
+}
+
+function calc_price(amount_1: big_integer, amount_2: big_integer, invert_price: boolean) {
+    return 
+        if (invert_price)
+            (amount_2 * PRICE_PRECISION) / amount_1 
+        else
+            (amount_1 * PRICE_PRECISION) / amount_2;
+}
+
+namespace UNSAFE {
+    function create_liq(
+        asset1: assets.asset,
+        amount1: big_integer,
+        amount_ccy: big_integer,
+        accounts.account
+    ) {
+        // add if exposed (and auth)
+        // require(amount1>0 and amount2>0);
+        // require(not pair @? { .id == .asset1.id }??);
+
+        val start_lp = sqrt(amount1 * amount_ccy);
+        require(start_lp >= 1000L, "A new pool can only be created with at least 1k unit LP");
+
+        val lp_account = accounts.create_account_without_auth(
+            asset1.id,
+            ACC_TYPE_POOL
+        );
+
+        assets.Unsafe.transfer(
+                account,
+                lp_account,
+                asset1,
+                amount1
+            );
+        assets.Unsafe.transfer(
+                account,
+                lp_account,
+                main.ccy.asset,
+                amount_ccy
+            );
+
+        val lp = utils.register_lp(asset1);
+        
+        create pair (
+            name = asset1.name.lower_case(),
+            symbol = asset1.symbol.lower_case(),
+
+            asset1.id,
+            asset1,
+            amount1,
+            amount_ccy,
+            lp_token = lp,
+            lp_account,
+        );
+
+        //-1000 to have min liq (uniswapv2 wp)
+        assets.Unsafe.mint(account, lp, start_lp - 1000L);
+        assets.Unsafe.mint(lp_account, lp, 1000L);
+
+        main.chain_stats.registered_pairs += 1;
+    }
+}

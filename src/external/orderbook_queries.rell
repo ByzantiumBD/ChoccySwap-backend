@@ -1,0 +1,50 @@
+struct price_range {
+    min: big_integer;
+    max: big_integer;
+}
+
+query get_orders_by_account(
+    id: byte_array,
+    asset: byte_array?,
+    price_range?,
+    page_size: integer?,
+    page_cursor: text?
+) {
+    val before_rowid = ft_utils.before_rowid(page_cursor);
+    return ft_utils.make_page(
+        orderbook.order @* { 
+            .account.id == id,
+            if (asset??)
+                .pair.id == asset
+            else true,
+            if (price_range??)
+                .price >= price_range.min and .price <= price_range.max
+            else true,
+            .rowid > (before_rowid ?: rowid(0))
+        } (
+            utils.extract_order_info($.to_struct(), .rowid)
+        ) limit ft_utils.fetch_data_size(page_size),
+        page_size
+    );
+}
+
+query get_orders_by_price_range(
+    asset: byte_array,
+    price_range,
+    page_size: integer?,
+    page_cursor: text?
+) {
+    val before_rowid = ft_utils.before_rowid(page_cursor);
+    return ft_utils.make_page(
+        orderbook.order @* {
+            .pair.id == asset,
+            .price >= price_range.min and .price <= price_range.max,
+            .rowid > (before_rowid ?: rowid(0))
+        } (
+            utils.extract_order_info($.to_struct(), .rowid)
+        ) limit ft_utils.fetch_data_size(page_size),
+        page_size
+    );
+}
+
+query get_price_precision() = pairs.PRICE_PRECISION;

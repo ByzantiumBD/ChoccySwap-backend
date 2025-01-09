@@ -1,0 +1,215 @@
+val MAX_ORDER_AMOUNT = 5;
+
+operation receive_balance(){
+    val a = auth.authenticate();
+    utils.limit_mints(a, ft_utils.latest_time());
+    for (c in assets.asset @* {}) {
+        assets.Unsafe.mint(a, c, big_integer("1"+"0".repeat(c.decimals)));
+    }
+}
+
+operation create_account(pubkey:byte_array) {
+    val acc = accounts.create_account_with_auth(
+        accounts.auth_descriptor(
+            accounts.auth_type.S,
+            [
+                set(["A", "T"]).to_gtv(),
+                pubkey.to_gtv()
+            ],
+            null.to_gtv()
+        )
+    );
+}
+
+operation add_liq(
+    asset1: byte_array,
+    amount1: big_integer,
+    amount_ccy: big_integer
+) {
+    val account = auth.authenticate();
+    require(amount1>0 and amount_ccy>0, "Cannot add negative liquidity");
+
+    val p = pairs.get_pair_or_null(asset1);
+
+    if (not p??) {
+        pairs.UNSAFE.create_liq(
+            assets.Asset(asset1),
+            amount1,
+            amount_ccy,
+            account
+        );
+        return; // Don't add liq twice when creating a pool
+    }
+
+    val pair = p;
+
+    var am1 = amount1;
+    var am2 = amount_ccy;
+
+    //  x     x'
+    // --- > --- => xy' > x'y (all values are positive)
+    //  y     y'
+    val ratio_to_be_added = am1 * pair.amount_ccy;
+    val ratio_in_liquidity = pair.amount1 * am2;
+    
+    if (ratio_to_be_added == ratio_in_liquidity) {
+        // shortcut
+    } else if (ratio_to_be_added > ratio_in_liquidity) {
+        // too much token1
+        am1 = (ratio_in_liquidity)/pair.amount_ccy;
+    } else {
+        // too much token2
+        am2 = (ratio_to_be_added)/pair.amount1;
+    }
+
+    val added_liq = (pair.lp_token.total_supply * am1) / pair.amount1;
+
+    assets.Unsafe.transfer(account, pair.account, pair.asset1, am1);
+    assets.Unsafe.transfer(account, pair.account, main.ccy.asset, am2);
+    
+    assets.Unsafe.mint(account, pair.lp_token, added_liq);
+}
+
+operation remove_liq(
+    asset1: byte_array,
+    amount1: big_integer,
+    amount_ccy: big_integer
+) {
+    val account = auth.authenticate();
+    require(amount1>0 and amount_ccy>0, "Cannot remove negative liquidity");
+
+    val pair = pairs.get_pair(asset1);
+
+    var am1 = amount1;
+    var am2 = amount_ccy;
+
+    //  x     x'
+    // --- > --- => xy' > x'y (all values are positive)
+    //  y     y'
+    val ratio_to_be_removed = am1 * pair.amount_ccy;
+    val ratio_in_liquidity = pair.amount1 * am2;
+    
+    if (ratio_to_be_removed == ratio_in_liquidity) {
+        // shortcut
+    } else if (ratio_to_be_removed > ratio_in_liquidity) {
+        // too much token1
+        am1 = (ratio_in_liquidity)/pair.amount_ccy;
+    } else {
+        // too much token2
+        am2 = (ratio_to_be_removed)/pair.amount1;
+    }
+
+    val removed_liq = (pair.lp_token.total_supply * am1) / pair.amount1;
+
+    assets.Unsafe.burn(account, pair.lp_token, removed_liq);
+
+    assets.Unsafe.transfer(pair.account, account, pair.asset1, am1);
+    assets.Unsafe.transfer(pair.account, account, main.ccy.asset, am2);
+}
+
+operation swap(
+    asset: byte_array,
+    buy_ccy: boolean,
+    amount: big_integer,
+    amount_min: big_integer,
+    deadline: timestamp
+) {
+    require(op_context.last_block_time<=deadline, "Swap request expired");
+    require(amount>0, "Amount must be greater than 0: " + amount);
+    val account = auth.authenticate();
+
+    val pair = pairs.get_pair(asset);
+    
+    orderbook.swap_with_orderbook(
+        account,
+        pair,
+        buy_ccy,
+        amount,
+        amount_min,
+    );
+}
+
+operation double_swap(
+    asset1: byte_array,
+    asset2: byte_array,
+    amount: big_integer,
+    amount_min: big_integer,
+    deadline: timestamp
+) {
+    require(op_context.last_block_time<=deadline, "Swap request expired");
+    require(amount>0, "Amount must be greater than 0: " + amount);
+    val account = auth.authenticate();
+
+    val pair1 = pairs.get_pair(asset1);
+    val pair2 = pairs.get_pair(asset2);
+    
+    val starting_ccy_balance = assets.get_asset_balance(account, main.ccy.asset);
+
+    orderbook.swap_with_orderbook(
+        account,
+        pair1,
+        true,
+        amount,
+        0L,
+    );
+
+    val delta = assets.get_asset_balance(account, main.ccy.asset) - starting_ccy_balance;
+
+    orderbook.swap_with_orderbook(
+        account,
+        pair2,
+        false,
+        delta,
+        amount_min,
+    );
+}
+
+operation place_order(
+    asset: byte_array,
+    buy_ccy: boolean,
+    amount: big_integer,
+    price: big_integer,
+    deadline: timestamp
+) {
+    val account = auth.authenticate();
+    val all_orders_from_account = orderbook.order @* {
+        account, .pair.id == asset
+    } ($.to_struct());
+
+    require(
+        all_orders_from_account.size() < MAX_ORDER_AMOUNT,
+        "Too many orders have been placed on this pair from this account."
+    );
+    require(
+        not (all_orders_from_account @? { price })??,
+        "An order for this price and this account already exists on this pair. Please remove it first."
+    );
+    require(
+        price < pairs.PRICE_PRECISION*pairs.PRICE_PRECISION,
+        "Price out of the acceptable range"
+    );
+
+    orderbook.add_order(
+        account,
+        asset,
+        price,
+        buy_ccy,
+        amount,
+        deadline,
+    );
+}
+
+operation burn_liq(
+    asset1:byte_array,
+    asset2:byte_array,
+    lp_amount:big_integer,
+) {
+    val account = auth.authenticate();
+    val pair = pairs.get_pair(asset1);
+    assets.Unsafe.transfer(
+        account,
+        pair.account,
+        pair.lp_token,
+        lp_amount
+    );
+}

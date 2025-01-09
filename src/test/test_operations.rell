@@ -1,0 +1,38 @@
+module;
+import ^^.utils;
+import lib.ft4.assets;
+import lib.ft4.accounts;
+import lib.ft4.auth;
+
+operation create_acc_test(accounts.auth_descriptor) {
+    accounts.create_account_with_auth(auth_descriptor);
+}
+operation limit_mint_test(acc_id: byte_array, timestamp) {
+    utils.limit_mints(accounts.account @ {acc_id}, timestamp);
+}
+operation register_asset_test(name, decimals: integer) {
+    assets.Unsafe.register_asset(
+        name,
+        name,
+        decimals,
+        chain_context.blockchain_rid,
+        "http://"+name
+    );
+}
+operation mint_test(account_id: byte_array, asset_id: byte_array, amount: big_integer) {
+    assets.Unsafe.mint(
+        accounts.account @ {account_id},
+        assets.asset @ {.id == asset_id},
+        amount
+    );
+}
+function empty_auth_message(gtv) = "";
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(empty_auth).mount_name,
+    flags = ["T"],
+    message = empty_auth_message(*)
+);
+operation empty_auth() {
+    auth.authenticate();
+}

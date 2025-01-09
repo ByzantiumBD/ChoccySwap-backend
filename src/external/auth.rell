@@ -1,0 +1,160 @@
+function receive_balance_message(gtv) {
+    return "Please sign to receive 1e18 of each token to your account.\n"
+          +"These tokens hold no value, they can only be used for testing.\n"
+          +"You can call this operation up to once per hour";
+}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(receive_balance).mount_name,
+    flags = ["T"],
+    message = receive_balance_message(*)
+);
+
+function add_liq_message(gtv) {
+    val params = struct<add_liq>.from_gtv(gtv);
+    val asset1 = assets.Asset(params.asset1);
+    return ("Please sign the message to add <%s %s> and <%s %s> to liquidity.\n\n"
+            +"Asset ID:\n\n- %s")
+        .format(
+            assets.format_amount_with_decimals(params.amount1, asset1.decimals),
+            asset1.symbol,
+            assets.format_amount_with_decimals(params.amount_ccy, main.ccy.asset.decimals),
+            main.ccy.asset.symbol,
+            asset1.id,
+        );
+}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(add_liq).mount_name,
+    flags = ["T"],
+    message = add_liq_message(*)
+);
+
+function remove_liq_message(gtv) {
+    val params = struct<remove_liq>.from_gtv(gtv);
+    val asset1 = assets.asset @ { .id == params.asset1 };
+    return ("Please sign the message to remove <%s %s> and <%s %s> from liquidity.\n\n"
+            +"Asset ID:\n\n- %s")
+        .format(
+            assets.format_amount_with_decimals(params.amount1, asset1.decimals),
+            asset1.symbol,
+            assets.format_amount_with_decimals(params.amount_ccy, main.ccy.asset.decimals),
+            main.ccy.asset.symbol,
+            asset1.id,
+        );
+}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(remove_liq).mount_name,
+    flags = ["T"],
+    message = remove_liq_message(*)
+);
+
+function burn_liq_message(gtv) {
+    val params = struct<burn_liq>.from_gtv(gtv);
+    val pair = pairs.get_pair(params.asset1);
+    return ("Please sign the message to burn <%s> LP tokens for pair <%s>. "
+            +"The LP tokens can never be retrieved.\n\n"
+            +"Asset ID:\n\n- %s")
+        .format(
+            assets.format_amount_with_decimals(params.lp_amount, pair.lp_token.decimals),
+            utils.get_pair_name(pair.to_struct()),
+            params.asset1,
+        );
+}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(burn_liq).mount_name,
+    flags = ["T"],
+    message = burn_liq_message(*)
+);
+
+function swap_message(gtv) {
+    val params = struct<swap>.from_gtv(gtv);
+    val asset = assets.Asset(params.asset);
+    val buy_ccy = params.buy_ccy;
+
+    val asset1 = if (buy_ccy) asset else main.ccy.asset;
+    val asset2 = if (buy_ccy) main.ccy.asset else asset;
+    return ("Please sign the message to swap <%s %s> for <%s>.\n\n"
+            +"The swap will be cancelled if not completed before timestamp: <%s> (ms)\n\n"
+            +"Slippage protection:\n\n  minimum return value:\n  - <%s %s>\n"
+            +"Asset ID:\n\n- %s")
+        .format(
+            assets.format_amount_with_decimals(params.amount, asset1.decimals),
+            asset1.symbol,
+            asset2.symbol,
+            params.deadline,
+            assets.format_amount_with_decimals(params.amount_min, asset2.decimals),
+            asset2.symbol,
+            asset.id,
+        );}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(swap).mount_name,
+    flags = ["T"],
+    message = swap_message(*)
+);
+
+function double_swap_message(gtv) {
+    val params = struct<double_swap>.from_gtv(gtv);
+    val asset1 = assets.Asset(params.asset1);
+    val asset2 = assets.Asset(params.asset2);
+
+    return ("Please sign the message to swap <%s %s> for <%s>.\n\n"
+            +"The swap will be cancelled if not completed before timestamp: <%s> (ms)\n\n"
+            +"Slippage protection:\n\n  minimum return value:\n  - <%s %s>\n"
+            +"Asset IDs:\n\n- %s\n\n- %s")
+        .format(
+            assets.format_amount_with_decimals(params.amount, asset1.decimals),
+            asset1.symbol,
+            asset2.symbol,
+            params.deadline,
+            assets.format_amount_with_decimals(params.amount_min, asset2.decimals),
+            asset2.symbol,
+            asset1.id,
+            asset2.id,
+        );}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(double_swap).mount_name,
+    flags = ["T"],
+    message = double_swap_message(*)
+);
+
+function place_order_message(gtv) {
+    val params = struct<place_order>.from_gtv(gtv);
+
+    val pair = pairs.get_pair(params.asset);
+    val buy_ccy = params.buy_ccy;
+    val (asset_in, asset_out) = if (buy_ccy)
+        (pair.asset1, main.ccy.asset)
+        else (main.ccy.asset, pair.asset1);
+
+    val amount_out = if (buy_ccy)
+        params.amount * pairs.PRICE_PRECISION / params.price
+        else params.amount * params.price / pairs.PRICE_PRECISION;
+    return ("Please sign the message to swap <%s %s> for <%s %s>\n\n"
+            +"Tx will revert if not complete before timestamp: %s (ms).\n\n"
+            +"Asset ID:\n\n%s")
+        .format(
+            assets.format_amount_with_decimals(params.amount, asset_in.decimals),
+            asset_in.symbol,
+            assets.format_amount_with_decimals(amount_out, asset_out.decimals),
+            asset_out.symbol,
+            params.deadline,
+            params.asset
+        );}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(place_order).mount_name,
+    flags = ["T"],
+    message = place_order_message(*)
+);

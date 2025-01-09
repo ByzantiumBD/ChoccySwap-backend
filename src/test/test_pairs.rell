@@ -1,0 +1,116 @@
+@test module;
+
+import ^^.main;
+import ^^.pairs;
+import tu: ^.test_utils;
+import ops: ^.test_operations;
+import ext: ^^.external;
+import ^^.utils;
+
+function test_mint_limit() {
+    val alice = tu.get_account(rell.test.keypairs.alice.pub);
+    ops.limit_mint_test(alice.id, 3).run();
+    ops.limit_mint_test(alice.id, 4).run_must_fail(
+            "You can't mint more than once per hour"
+        );
+    ops.limit_mint_test(alice.id, 2).run_must_fail(
+            "You can't mint more than once per hour"
+        );
+    ops.limit_mint_test(alice.id, 3600003).run();
+}
+
+function test_adds_liq() {
+    val alice = tu.get_account(rell.test.keypairs.alice.pub);
+    val coin1 = tu.get_asset("add_liq_test1", 18);
+    val coin2 = main.ccy.asset;
+
+    tu.give_balance(alice, coin1);
+    tu.give_balance(alice, coin2);
+
+    val amount1 = 10000000000000000000L;
+    val amount2 = 100000000000L;
+
+    tu.run(
+        ext.add_liq(
+            coin1.id,
+            amount1,
+            amount2
+        ),
+        rell.test.keypairs.alice
+    );
+
+    assert_equals(
+        pairs.get_pair(coin1.id).lp_token.total_supply,
+        pairs.sqrt(amount1 * amount2)
+    );
+}
+
+function test_removes_liq() {
+    /** adds liq **/
+    val alice = tu.get_account(rell.test.keypairs.alice.pub);
+    val coin1 = tu.get_asset("remove_liq_test1", 18);
+    val coin2 = main.ccy.asset;
+
+    val am1 = 10000000000000000000L;
+    val am_ccy = 100000000000L;
+
+    tu.give_balance(alice, coin1);
+    tu.give_balance(alice, coin2);
+
+    tu.run(
+        ext.add_liq(
+            coin1.id,
+            am1,
+            am_ccy
+        ),
+        rell.test.keypairs.alice
+    );
+
+    /** fails cause 1000 liq tokens were burnt **/
+    tu.expect_failure(
+        ext.remove_liq(
+            coin1.id,
+            am1,
+            am_ccy
+        ),
+        rell.test.keypairs.alice,
+        "Insufficient balance"
+    );
+
+    /*
+    from removed_lps = (lp.total_supply * am1) / pair.amount1;
+    
+    lp supply is sqrt(pair.am1 * pair.am_ccy), calling this "tot";
+    max value for removed_lps = total LPs - 1000L (get burnt on creation)
+
+    tot - 1000 = tot * am1 / pair.am1
+    (tot - 1000) * pair.am1 = tot * am1
+    (tot * pair.am1 - 1000 * pair.am1) / tot = am1
+
+    Thus, am1 (the amount to remove) is
+
+    pair.am1 - (1000 * pair.am1)/tot
+
+    where tot is sqrt(pair.am1 * pair.am_ccy)
+    Further simplified:
+
+    pair.am1 - (1000 * pair.am1)/sqrt(pair.am1 * pair.am_ccy)
+    pair.am1 - (1000 * sqrt(pair.am1 / pair.am_ccy))
+    */
+    val removable_liq = am1 - 1000L * pairs.sqrt(am1/am_ccy);
+
+    /** removes liq **/
+    tu.run(
+        ext.remove_liq(
+            coin1.id,
+            removable_liq,
+            am_ccy // this amount will be pulled down to match the amount above
+        ),
+        rell.test.keypairs.alice
+    );
+
+    assert_equals(
+        pairs.get_pair(coin1.id).lp_token.total_supply,
+        1000L
+    );
+}
