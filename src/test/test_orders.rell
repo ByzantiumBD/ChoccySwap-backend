@@ -6,6 +6,7 @@ import ^^.utils;
 import ^^.orderbook;
 import ft_utils: lib.ft4.utils;
 import lib.ft4.assets;
+import lib.ft4.accounts;
 import tu: ^.test_utils;
 import tops: ^.test_operations;
 import ext: ^^.external;
@@ -391,4 +392,92 @@ function test_max_order_number() {
     tu.create_order(
         p, true, 100L, 1L, keypair=rell.test.keypairs.bob
     );
+}
+
+function test_remove_orders() {
+    val alice = tu.get_account(rell.test.keypairs.alice.pub);
+    val p = tu.create_pool(
+        10000L, 10000L
+    );
+
+    /*
+     simulating a swap of 10k:
+     1k into pool
+     2k into order
+     3k into pool
+     4k into one order
+     where the 3k into pool passes through a deleted order
+     */
+    
+    val price_after_1k_dollars_sold = pairs.pair_functions.calc_swap_end_price_and_output(
+        p.to_struct(), 1000L, true
+    ).end_price;
+
+    val amount_worth_2k_dollars = 2000L*pairs.PRICE_PRECISION/price_after_1k_dollars_sold;
+
+    val last_swap = pairs.pair_functions.calc_swap_end_price_and_output(
+        p.to_struct(), 1000L + 3000L, true
+    );
+
+    val price_after_6k_dollars_sold = last_swap.end_price;
+
+    val intermediate_price = (price_after_1k_dollars_sold + price_after_6k_dollars_sold) / 2L;
+
+    val amount_worth_4k_dollars = 4000L*pairs.PRICE_PRECISION/price_after_6k_dollars_sold;
+
+    tu.create_order(
+        p, false, amount_worth_2k_dollars, price_after_1k_dollars_sold
+    );
+    tu.create_order(
+        p, false, amount_worth_4k_dollars, price_after_6k_dollars_sold
+    );
+    tu.create_order(
+        p, false, amount_worth_4k_dollars, intermediate_price, keypair=rell.test.keypairs.bob
+    );
+
+    val to_remove = orderbook.get_order_id(
+        accounts.account @ { .id == rell.test.pubkeys.bob.hash() },
+        p,
+        intermediate_price
+    );
+
+    var all_orders = orderbook.order @* {};
+    assert_equals(all_orders.size(), 3);
+
+    tu.expect_failure(
+        ext.remove_order(to_remove),
+        rell.test.keypairs.alice,
+        "The order does not exist"
+    );
+
+    all_orders = orderbook.order @* {};
+    assert_equals(all_orders.size(), 3);
+
+    tu.run(
+        ext.remove_order(to_remove),
+        rell.test.keypairs.bob
+    );
+
+    all_orders = orderbook.order @* {};
+    assert_equals(all_orders.size(), 2);
+    
+    tu.give_balance(alice, p.asset1, 10000L);
+
+    val expected_amount_out = 
+        last_swap.out_amount +
+        amount_worth_4k_dollars +
+        amount_worth_2k_dollars;
+
+    tu.run(
+        ext.swap(
+            p.asset1.id,
+            true,
+            10000L,
+            expected_amount_out,
+            ft_utils.latest_time() + 100000
+        ),
+        rell.test.keypairs.alice
+    );
+
+    assert_equals((orderbook.order @* {}).size(), 0);
 }

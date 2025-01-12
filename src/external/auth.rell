@@ -158,3 +158,43 @@ function () = auth.add_auth_handler(
     flags = ["T"],
     message = place_order_message(*)
 );
+
+function remove_order_message(gtv) {
+    val id = struct<remove_order>.from_gtv(gtv).id;
+
+    val order = orderbook.order @? { id };
+
+    require(
+        order??,
+        "The order does not exist, does not belong to this account, or it has been already executed."
+    );
+
+    val pair = order.pair;
+    val buy_ccy = order.buy_ccy;
+    var action = if (buy_ccy) "sell <%s %s> for CCY" else "buy <%s> with <%s> CCY";
+    val asset = pair.asset1;
+    val amount_string = assets.format_amount_with_decimals(
+        order.amount,
+        if (buy_ccy) asset.decimals else main.ccy.asset.decimals
+    );
+
+    action = if (buy_ccy)
+            action.format(amount_string, asset.symbol)
+        else
+            action.format(asset.symbol, amount_string);
+
+    return ("Please sign the message to delete the order "
+            +"to " + action + ".\n\n"
+            +"Order ID:\n\n- %s\n\n"
+            +"Asset ID:\n\n%s")
+        .format(
+            order.id,
+            asset.id
+        );}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(remove_order).mount_name,
+    flags = ["T"],
+    message = remove_order_message(*)
+);

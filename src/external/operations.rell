@@ -199,6 +199,24 @@ operation place_order(
     );
 }
 
+operation remove_order(
+    id: byte_array
+) {
+    val account = auth.authenticate();
+    val order_or_null = orderbook.order @? {
+        account, id
+    };
+
+    require(
+        order_or_null??,
+        "The order does not exist, does not belong to this account, or it has been already executed."
+    );
+
+    orderbook.remove_order(
+        order_or_null
+    );
+}
+
 operation burn_liq(
     asset1:byte_array,
     asset2:byte_array,
