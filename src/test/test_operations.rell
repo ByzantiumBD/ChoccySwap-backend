@@ -1,5 +1,7 @@
 module;
 import ^^.utils;
+import ^^.orderbook;
+import ^^.pairs;
 import lib.ft4.assets;
 import lib.ft4.accounts;
 import lib.ft4.auth;
@@ -35,4 +37,31 @@ function () = auth.add_auth_handler(
 );
 operation empty_auth() {
     auth.authenticate();
+}
+operation performance_test(account_id: byte_array, pair_id: byte_array, price: big_integer) {
+    val trudy = accounts.account @ { account_id };
+    val p = pairs.pair @ { pair_id };
+    val order_acc = accounts.ensure_account_without_auth(
+        x"aa",
+        "AA"
+    );
+    assets.Unsafe.mint(
+        order_acc,
+        p.asset1,
+        10000L
+    );
+    val deadline = op_context.last_block_time + (1000*3600*24);
+
+    for (i in range(10000)) {
+        create orderbook.order (
+            x"aa".repeat(i),
+            p,
+            account = trudy,
+            order_acc,
+            price = price - big_integer(i),
+            true,
+            amount = 1L,
+            deadline
+        );
+    }
 }

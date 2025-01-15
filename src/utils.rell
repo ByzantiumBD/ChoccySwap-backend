@@ -125,35 +125,43 @@ function spend_on_order(
         order_struct.amount * order_struct.price / pairs.PRICE_PRECISION;
 
     val input = min(amount, order_worth);
-    val output = if (order_struct.buy_ccy)
+    var output = if (order_struct.buy_ccy)
         input * order_struct.price / pairs.PRICE_PRECISION
         else
         input * pairs.PRICE_PRECISION /  order_struct.price;
+    if (input == order_worth) {
+        output = order_struct.amount;
+    }
 
     require(amount > 0, "Output must be greater than 0: " + output);
     val (remainder, fee) = split_amount_for_fee(true, output);
 
-    assets.Unsafe.transfer(
+    if (input > 0) {
+        assets.Unsafe.transfer(
             account,
             order_struct.account,
             if (order_struct.buy_ccy) main.ccy.asset else asset1,
             input
         );
-        
-    assets.Unsafe.transfer(
+    }
+    if (remainder > 0) {
+        assets.Unsafe.transfer(
             order_struct.order_acc,
             account,
             if (order_struct.buy_ccy) asset1 else main.ccy.asset,
             remainder,
         );
-
-    assets.Unsafe.transfer(
+    }
+    if (fee > 0) {
+        assets.Unsafe.transfer(
             order_struct.order_acc,
             order_struct.pair.account,
             if (order_struct.buy_ccy) asset1 else main.ccy.asset,
             fee,
         );
+    }
 
+        
     if (input == order_worth) {
         delete orderbook.order @ { .id == order_struct.id };
     } else {

@@ -1,0 +1,74 @@
+@test module;
+
+import ^^.main;
+import ^^.pairs;
+import ^^.utils;
+import ^^.orderbook;
+import ft_utils: lib.ft4.utils;
+import lib.ft4.assets;
+import lib.ft4.accounts;
+import tu: ^.test_utils;
+import tops: ^.test_operations;
+import ext: ^^.external;
+
+function test_10000_orders() {
+    val alice = tu.get_account(rell.test.keypairs.alice.pub);
+    val trudy = tu.get_account(rell.test.keypairs.trudy.pub);
+    val p = tu.create_pool(
+        10000L, 10000L
+    );
+    val start = ft_utils.latest_time();
+    print("\n\n\n============\n\nStarting performance test...");
+    print("\n\nEVENT\tTIME\tDELTA");
+
+    val curr_price = pairs.calc_price(p.amount1, p.amount_ccy, false);
+    var order_price = curr_price - 10L;
+
+    var partial = ft_utils.latest_time() - start;
+    var total = partial;
+    print("INIT\t" + total/1000 + "\t" + partial/1000);
+
+    tops.performance_test(trudy.id, p.id, order_price).run();
+
+    assert_equals((orderbook.order @* {}).size(), 10000);
+
+    var old_total = total;
+    total = ft_utils.latest_time() - start;
+    partial = total-old_total;
+    print("ENTRIES\t" + total/1000 + "\t" + partial/1000);
+
+    // to be sure to take them all
+    val end_price = order_price - 10000L - 10L;
+
+    // excess to cover fees, the value on the right should be 0L as well
+    val amount_to_swap = 10000L + pairs.pair_functions.calc_swap_amount_to_price(
+        p, end_price, false
+    );
+
+    tu.give_balance(alice, main.ccy.asset, amount_to_swap);
+
+    old_total = total;
+    total = ft_utils.latest_time() - start;
+    partial = total-old_total;
+    print("SETUP\t" + total/1000 + "\t" + partial/1000);
+
+    tu.run(
+        ext.swap(
+            p.id,
+            false,
+            amount_to_swap,
+            1L,
+            ft_utils.latest_time() + 10000
+        ),
+        rell.test.keypairs.alice
+    );
+
+    old_total = total;
+    total = ft_utils.latest_time() - start;
+    partial = total-old_total;
+    print("ORDER\t" + total/1000 + "\t" + partial/1000);
+
+    assert_equals((orderbook.order @* {}).size(), 0);
+    
+    print("\nEnd performance test\n============\n\n\n");
+}
