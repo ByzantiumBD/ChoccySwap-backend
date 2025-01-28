@@ -140,7 +140,7 @@ function place_order_message(gtv) {
     val amount_out = if (buy_ccy)
         params.amount * pairs.PRICE_PRECISION / params.price
         else params.amount * params.price / pairs.PRICE_PRECISION;
-    return ("Please sign the message to swap <%s %s> for <%s %s>\n\n"
+    return ("Please sign the message to place an order to swap <%s %s> for <%s %s>\n\n"
             +"Tx will revert if not complete before timestamp: %s (ms).\n\n"
             +"Asset ID:\n\n%s")
         .format(
