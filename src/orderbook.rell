@@ -234,7 +234,7 @@ function swap_with_orderbook(
         safety = to_pay;
     }
 
-    if(to_pay_from_order_acc> 0L){
+    if(to_pay_from_order_acc > 0L){
         assets.Unsafe.transfer(
             order_acc,
             account,

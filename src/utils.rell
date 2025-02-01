@@ -153,7 +153,7 @@ function spend_on_order(
         update orderbook.order @ { .id == order_struct.id } ( amount -= output );
     }
     
-    return (spent = input, received = output,fee = fee, fully_executed = fully_executed);
+    return (spent = input, received = output, fee = fee, fully_executed = fully_executed);
 }
 
 function split_amount_for_fee(is_order: boolean, amount: big_integer) {
