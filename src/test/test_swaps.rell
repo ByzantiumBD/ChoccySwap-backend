@@ -43,28 +43,28 @@ function test_swap() {
             .asset.id == p.id
         }??
     );
-    // alice has "expected" ccy
+    // alice has "expected" cusd
     assert_equals(
         assets.balance @ {
             .account == alice,
-            .asset == main.ccy.asset
+            .asset == main.cusd.asset
         } .amount,
         expected_amount_out
     );
 
-    tu.give_balance(alice, main.ccy.asset, 10000L);
+    tu.give_balance(alice, main.cusd.asset, 10000L);
     val expected_2 = utils.split_amount_for_fee(false, (p.amount1 / 2L)).remainder;
 
     tu.expect_failure(
         ext.swap(
-            p.id, false, p.amount_ccy, expected_2 + 1, ft_utils.latest_time() + 1000000
+            p.id, false, p.amount_cusd, expected_2 + 1, ft_utils.latest_time() + 1000000
         ),
         rell.test.keypairs.alice,
         "Amount received too small, the price went out of range"
     );
     tu.run(
         ext.swap(
-            p.id, false, p.amount_ccy, expected_2, ft_utils.latest_time() + 1000000
+            p.id, false, p.amount_cusd, expected_2, ft_utils.latest_time() + 1000000
         ),
         rell.test.keypairs.alice
     );
@@ -111,11 +111,11 @@ function test_double_swap() {
             .asset.id == p1.id
         }??
     );
-    // alice has no ccy
+    // alice has no cusd
     assert_false(
         assets.balance @? {
             .account == alice,
-            .asset == main.ccy.asset
+            .asset == main.cusd.asset
         }??
     );
     // alice has expected "asset2"

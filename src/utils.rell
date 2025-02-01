@@ -13,7 +13,7 @@ val transfer_op_name = rell.meta(assets.external.transfer).mount_name;
 val ORDER_FEE_PERTHOU = 3L;
 val SWAP_FEE_PERTHOU = 3L;
 
-val ASSET_TYPE_LP = "CCY_LP_TOKEN";
+val ASSET_TYPE_LP = "CHOCCY_LP_TOKEN";
 
 entity last_mint {
     key accounts.account;
@@ -41,7 +41,7 @@ function extract_order_info(order: struct<orderbook.order>, rowid) {
             pair = extract_pair_info(p, rowid(0)).data,
             account_id = order.account.id,
             price = order.price,
-            buy_ccy = order.buy_ccy,
+            buy_cusd = order.buy_cusd,
             amount = order.amount,
             deadline = order.deadline
         ).to_gtv_pretty(),
@@ -56,7 +56,7 @@ function extract_pair_info(pair: struct<pairs.pair>, rowid) {
             name = get_pair_name(pair),
             asset1 = assets.map_asset(pair.asset1),
             amount1 = pair.amount1,
-            amount_ccy = pair.amount_ccy,
+            amount_cusd = pair.amount_cusd,
             lp_token = assets.map_asset(pair.lp_token),
         ).to_gtv_pretty(),
         rowid
@@ -64,11 +64,11 @@ function extract_pair_info(pair: struct<pairs.pair>, rowid) {
 }
 
 function get_pair_name(pair: struct<pairs.pair>) {
-    return "%s - %s".format(pair.asset1.symbol, main.ccy.asset.symbol);
+    return "%s - %s".format(pair.asset1.symbol, main.cusd.asset.symbol);
 }
 
 function get_price(pair: struct<pairs.pair>) {
-    return (pairs.PRICE_PRECISION * pair.amount1) / pair.amount_ccy;
+    return (pairs.PRICE_PRECISION * pair.amount1) / pair.amount_cusd;
 }
 
 /** 
@@ -78,15 +78,15 @@ function get_price(pair: struct<pairs.pair>) {
 function spend_on_pair(
     accounts.account,
     pair: pairs.pair,
-    buy_ccy: boolean,
+    buy_cusd: boolean,
     amount: big_integer
 ) {
     require(amount > 0, "Amount must be greater than 0: " + amount);
     val asset1 = pair.asset1;
 
     val to_amount = pairs.with_fees.calc_swap_output(
-            if (buy_ccy) pair.amount1 else pair.amount_ccy,
-            if (buy_ccy) pair.amount_ccy else pair.amount1,
+            if (buy_cusd) pair.amount1 else pair.amount_cusd,
+            if (buy_cusd) pair.amount_cusd else pair.amount1,
             amount
         );
     require(to_amount > 0, "to amount must be greater than 0: " + to_amount);
@@ -94,14 +94,14 @@ function spend_on_pair(
     assets.Unsafe.transfer(
             account,
             pair.account,
-            if (buy_ccy) asset1 else main.ccy.asset,
+            if (buy_cusd) asset1 else main.cusd.asset,
             amount
         );
 
     assets.Unsafe.transfer(
             pair.account,
             account,
-            if (buy_ccy) main.ccy.asset else asset1,
+            if (buy_cusd) main.cusd.asset else asset1,
             to_amount
         );
 
@@ -109,23 +109,23 @@ function spend_on_pair(
 }
 
 /**
- * @param amount    always in the asset that the order maker receives. If buy_ccy, in CCY
+ * @param amount    always in the asset that the order maker receives. If buy_cusd, in cusd
  */
 function spend_on_order(
     accounts.account,
     order_struct: struct<orderbook.order>,
     amount: big_integer
-): (spent:big_integer, received:big_integer) {
+): (spent:big_integer, received:big_integer, fully_executed:boolean) {
     require(amount > 0, "Amount must be greater than 0: " + amount);
     val asset1 = order_struct.pair.asset1;
 
-    val order_worth = if (order_struct.buy_ccy) 
+    val order_worth = if (order_struct.buy_cusd) 
         order_struct.amount * pairs.PRICE_PRECISION /  order_struct.price
         else
         order_struct.amount * order_struct.price / pairs.PRICE_PRECISION;
 
     val input = min(amount, order_worth);
-    var output = if (order_struct.buy_ccy)
+    var output = if (order_struct.buy_cusd)
         input * order_struct.price / pairs.PRICE_PRECISION
         else
         input * pairs.PRICE_PRECISION /  order_struct.price;
@@ -135,12 +135,12 @@ function spend_on_order(
 
     require(amount > 0, "Output must be greater than 0: " + output);
     val (remainder, fee) = split_amount_for_fee(true, output);
-
+    
     if (input > 0) {
         assets.Unsafe.transfer(
             account,
             order_struct.account,
-            if (order_struct.buy_ccy) main.ccy.asset else asset1,
+            if (order_struct.buy_cusd) main.cusd.asset else asset1,
             input
         );
     }
@@ -148,7 +148,7 @@ function spend_on_order(
         assets.Unsafe.transfer(
             order_struct.order_acc,
             account,
-            if (order_struct.buy_ccy) asset1 else main.ccy.asset,
+            if (order_struct.buy_cusd) asset1 else main.cusd.asset,
             remainder,
         );
     }
@@ -156,18 +156,19 @@ function spend_on_order(
         assets.Unsafe.transfer(
             order_struct.order_acc,
             order_struct.pair.account,
-            if (order_struct.buy_ccy) asset1 else main.ccy.asset,
+            if (order_struct.buy_cusd) asset1 else main.cusd.asset,
             fee,
         );
     }
 
-        
-    if (input == order_worth) {
-        delete orderbook.order @ { .id == order_struct.id };
-    } else {
+    val fully_executed = input == order_worth;
+    val fully_spent = input == amount;
+    if (not fully_executed) {
+        require(fully_spent, "Order not fully executed, but the user had more funds to spend");
         update orderbook.order @ { .id == order_struct.id } ( amount -= output );
     }
-    return (spent = input, received = output);
+    
+    return (spent = input, received = output, fully_executed = fully_executed);
 }
 
 function split_amount_for_fee(is_order: boolean, amount: big_integer) {
@@ -212,6 +213,6 @@ function register_lp(
         "LP",
         18,
         "https://choccyswap.com/logo_lp.svg",
-        "LP provider for asset ID %s on Choccyswap".format(asset.id).to_bytes()
+        "LP provider for asset ID %s on choccyswap".format(asset.id).to_bytes()
     );
 }

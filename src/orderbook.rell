@@ -8,15 +8,15 @@ import lib.ft4.assets;
 import lib.ft4.auth;
 import ft_utils: lib.ft4.utils;
 
-val ACC_TYPE_ORDER = "CCY_ORDER";
+val ACC_TYPE_ORDER = "CHOCCY_ORDER";
 
 entity order {
     index pairs.pair;
     index accounts.account;
     order_acc: accounts.account;
     index price: big_integer;
-    index buy_ccy: boolean;
-    /** if (buy_ccy) amount1 else amount_ccy */
+    index buy_cusd: boolean;
+    /** if (buy_cusd) amount1 else amount_cusd */
     mutable amount: big_integer;
     deadline: timestamp;
 
@@ -29,15 +29,15 @@ function get_order_id(accounts.account, pairs.pair, price: big_integer) {
     return (account.id, pair.id, price).hash();
 }
 
-function get_order_account_id(accounts.account) {
-    return (account.id, ACC_TYPE_ORDER).hash();
+function get_order_account_id(pairs.pair) {
+    return (pair.id, ACC_TYPE_ORDER).hash();
 }
 
 function add_order(
     accounts.account,
     pair_id: byte_array,
     price: big_integer,
-    buy_ccy: boolean,
+    buy_cusd: boolean,
     amount: big_integer,
     deadline: timestamp,
 ) {
@@ -52,12 +52,12 @@ function add_order(
     val p = pairs.get_pair(pair_id);
     val curr_price = utils.get_price(p.to_struct());
 
-    val condition = if (buy_ccy) curr_price > price else curr_price < price;
+    val condition = if (buy_cusd) curr_price > price else curr_price < price;
 
     require(condition, "Spot price is better than the order price. Place a spot order instead.");
 
     val order_acc = accounts.ensure_account_without_auth(
-        get_order_account_id(account),
+        get_order_account_id(p),
         ACC_TYPE_ORDER
     );
 
@@ -65,7 +65,7 @@ function add_order(
     assets.Unsafe.transfer(
             account,
             order_acc,
-            if (buy_ccy) p.asset1 else main.ccy.asset,
+            if (buy_cusd) p.asset1 else main.cusd.asset,
             amount
         );
 
@@ -75,7 +75,7 @@ function add_order(
         account,
         order_acc,
         price,
-        buy_ccy,
+        buy_cusd,
         amount,
         deadline
     );
@@ -86,7 +86,7 @@ function remove_order(order) {
     assets.Unsafe.transfer(
             order.order_acc,
             order.account,
-            if (order.buy_ccy) order.pair.asset1 else main.ccy.asset,
+            if (order.buy_cusd) order.pair.asset1 else main.cusd.asset,
             order.amount
         );
 
@@ -95,18 +95,18 @@ function remove_order(order) {
 
 /*
  * Deletes expired orders in that range.
- * If p1 > p2 (in X/CCY) it's selling CCY
- * If p2 > p1 (in X/CCY) it's buying CCY
+ * If p1 > p2 (in X/cusd) it's selling cusd
+ * If p2 > p1 (in X/cusd) it's buying cusd
  */
 function get_orders_in_inclusive_range_ordered(p1: big_integer, p2: big_integer) {
-    val buy_ccy = p2 > p1;
+    val buy_cusd = p2 > p1;
     
     var orders = list<struct<order>>();
-    if (buy_ccy) {
+    if (buy_cusd) {
         orders = order @* {
             .price >= p1,
             .price <= p2,
-            .buy_ccy == not buy_ccy
+            .buy_cusd == not buy_cusd
         } ( 
             $.to_struct()
         );
@@ -114,7 +114,7 @@ function get_orders_in_inclusive_range_ordered(p1: big_integer, p2: big_integer)
         orders = order @* {
             .price <= p1,
             .price >= p2,
-            .buy_ccy == not buy_ccy
+            .buy_cusd == not buy_cusd
         } (
             @omit @sort_desc .price,
             $.to_struct()
@@ -134,7 +134,7 @@ function get_orders_in_inclusive_range_ordered(p1: big_integer, p2: big_integer)
 function swap_with_orderbook(
     accounts.account,
     pair: pairs.pair,
-    buy_ccy: boolean,
+    buy_cusd: boolean,
     amount: big_integer,
     amount_min: big_integer,
 ) {
@@ -144,9 +144,11 @@ function swap_with_orderbook(
     val pair_at_start_struct = pair.to_struct();
 
     val curr_price = utils.get_price(pair_at_start_struct);
-    var executed_orders = 0;
-    var partially_filled_order = false;
+    var partially_filled_order: struct<order>? = null;
     var last_processed = -1;
+    
+    // Keep track of fully executed orders to delete at the end
+    val orders_to_delete = set<byte_array>();
 
     // retrieve all orders in the price range of the swap with only AMM
     // excessive, but necessary, as it's better to query once, with too many orders returned,
@@ -157,7 +159,7 @@ function swap_with_orderbook(
     ) = pairs.pair_functions.calc_swap_end_price_and_output(
         pair_at_start_struct,
         amount,
-        buy_ccy
+        buy_cusd
     );
 
     var orders = get_orders_in_inclusive_range_ordered(
@@ -175,41 +177,42 @@ function swap_with_orderbook(
             am_to_next = pairs.pair_functions.calc_swap_amount_to_price(
                 pair,
                 next_stop,
-                buy_ccy,
+                buy_cusd,
             );
         } else {
             am_to_next = to_pay;
         }
 
         if (am_to_next >= to_pay) {
-            val rec = utils.spend_on_pair(account,pair,buy_ccy,to_pay);
+            val rec = utils.spend_on_pair(account,pair,buy_cusd,to_pay);
 
             to_pay = 0;
             received += rec;
         } else {
             if (am_to_next != 0) {
-                val rec = utils.spend_on_pair(account,pair,buy_ccy,am_to_next);
+                val rec = utils.spend_on_pair(account,pair,buy_cusd,am_to_next);
                 to_pay -= am_to_next;
                 received += rec;
             }
 
             last_processed += 1;
             val order_to_process = orders[last_processed];
-            val (spent, rec) = utils.spend_on_order(
+            val (spent, rec, fully_executed) = utils.spend_on_order(
                 account,
                 order_to_process,
                 to_pay
             );
 
-            if (order_to_process.amount < rec) {
+            if (not fully_executed) {
                 require(
-                    not partially_filled_order,
+                    not partially_filled_order??,
                     "More than one order has been left partially executed"
                 );
-                partially_filled_order = true;
+                partially_filled_order = order_to_process;
             } else {
-                executed_orders++;
+                orders_to_delete.add(order_to_process.id);
             }
+            
             to_pay -= spent;
             received += rec;
         }
@@ -222,7 +225,7 @@ function swap_with_orderbook(
     }
 
     if (received < amount_min) {
-        val asset = if (buy_ccy) main.ccy.asset else pair.asset1;
+        val asset = if (buy_cusd) main.cusd.asset else pair.asset1;
         require(
             false,
             ("Swap for <%s>. Amount received too small, the price went out of range. "+
@@ -234,8 +237,11 @@ function swap_with_orderbook(
         );
     }
 
+    // Delete all fully executed orders at once
+    delete order @* { .id in orders_to_delete };
+
     update main.chain_stats (
         executed_swaps += 1,
-        executed_orders += executed_orders,
+        executed_orders += orders_to_delete.size(),
     );
 }

@@ -60,21 +60,21 @@ function expect_failure(rell.test.op, signer: rell.test.keypair, text) {
 
 function create_pool(
     amount1: big_integer,
-    amount_ccy: big_integer,
+    amount_cusd: big_integer,
     coin_name: text = "dollar",
 ) {
     val trudy = get_account(rell.test.keypairs.trudy.pub);
     val coin = get_asset(coin_name, 18);
-    val ccy = main.ccy.asset;
+    val cusd = main.cusd.asset;
 
     give_balance(trudy, coin, amount1);
-    give_balance(trudy, ccy, amount_ccy);
+    give_balance(trudy, cusd, amount_cusd);
 
     run(
         external.add_liq(
             coin.id,
             amount1,
-            amount_ccy
+            amount_cusd
         ),
         rell.test.keypairs.trudy
     );
@@ -84,21 +84,21 @@ function create_pool(
 
 function create_order(
     pairs.pair,
-    buy_ccy: boolean,
+    buy_cusd: boolean,
     amount: big_integer,
     price: big_integer,
     deadline: timestamp = ft_utils.latest_time() + 100000,
     keypair: rell.test.keypair = rell.test.keypairs.trudy
 ) {
     val trudy = get_account(keypair.pub);
-    val coin = if (buy_ccy) pair.asset1 else main.ccy.asset;
+    val coin = if (buy_cusd) pair.asset1 else main.cusd.asset;
 
     give_balance(trudy, coin, amount);
 
     run(
         external.place_order(
             pair.asset1.id,
-            buy_ccy,
+            buy_cusd,
             amount,
             price,
             deadline

@@ -7,7 +7,7 @@ import lib.ft4.assets;
 
 val PRICE_PRECISION = assets.max_asset_amount; //2^256-1
 val LP_TOKEN_DECIMALS = 18;
-val ACC_TYPE_POOL = "CCY_LIQ_POOL";
+val ACC_TYPE_POOL = "CHOCCY_LIQ_POOL";
 
 entity pair {
     index name;
@@ -16,7 +16,7 @@ entity pair {
 
     asset1: assets.asset;
     mutable amount1: big_integer;
-    index mutable amount_ccy: big_integer;
+    index mutable amount_cusd: big_integer;
     key lp_token: assets.asset;
     key account: accounts.account;
     index account;
@@ -162,21 +162,21 @@ namespace with_fees {
 
 namespace pair_functions {
     /**
-     * If buy_ccy, for a pair ($ => CCY), it will assume amount_in to be in $.
-     * If not buy_ccy, it will assume amount_in to be in CCY.
-     * Then, the price calculated will still be in $/CCY.
-     * This is because orders always have price in `asset1/CCY`, regardless of `buy_ccy`.
+     * If buy_cusd, for a pair ($ => cusd), it will assume amount_in to be in $.
+     * If not buy_cusd, it will assume amount_in to be in cusd.
+     * Then, the price calculated will still be in $/cusd.
+     * This is because orders always have price in `asset1/cusd`, regardless of `buy_cusd`.
      */
-    function calc_swap_end_price_and_output(pair: struct<pair>, amount_in: big_integer, buy_ccy: boolean) {
-        val one = if (buy_ccy) pair.amount1 else pair.amount_ccy;
-        val two = if (buy_ccy) pair.amount_ccy else pair.amount1;
-        return with_fees.calc_swap_end_price_and_output(one, two, amount_in, not buy_ccy);
+    function calc_swap_end_price_and_output(pair: struct<pair>, amount_in: big_integer, buy_cusd: boolean) {
+        val one = if (buy_cusd) pair.amount1 else pair.amount_cusd;
+        val two = if (buy_cusd) pair.amount_cusd else pair.amount1;
+        return with_fees.calc_swap_end_price_and_output(one, two, amount_in, not buy_cusd);
     }
 
-    function calc_swap_amount_to_price(pair: pair, end_price: big_integer, buy_ccy: boolean) {
-        val one = if (buy_ccy) pair.amount1 else pair.amount_ccy;
-        val two = if (buy_ccy) pair.amount_ccy else pair.amount1;
-        val price = if (buy_ccy) end_price else PRICE_PRECISION*PRICE_PRECISION/end_price;
+    function calc_swap_amount_to_price(pair: pair, end_price: big_integer, buy_cusd: boolean) {
+        val one = if (buy_cusd) pair.amount1 else pair.amount_cusd;
+        val two = if (buy_cusd) pair.amount_cusd else pair.amount1;
+        val price = if (buy_cusd) end_price else PRICE_PRECISION*PRICE_PRECISION/end_price;
         return with_fees.calc_swap_amount_to_price(one, two, price);
     }
 
@@ -194,14 +194,14 @@ namespace UNSAFE {
     function create_liq(
         asset1: assets.asset,
         amount1: big_integer,
-        amount_ccy: big_integer,
+        amount_cusd: big_integer,
         accounts.account
     ) {
         // add if exposed (and auth)
         // require(amount1>0 and amount2>0);
         // require(not pair @? { .id == .asset1.id }??);
 
-        val start_lp = sqrt(amount1 * amount_ccy);
+        val start_lp = sqrt(amount1 * amount_cusd);
         require(start_lp >= 1000L, "A new pool can only be created with at least 1k unit LP");
 
         val lp_account = accounts.create_account_without_auth(
@@ -218,8 +218,8 @@ namespace UNSAFE {
         assets.Unsafe.transfer(
                 account,
                 lp_account,
-                main.ccy.asset,
-                amount_ccy
+                main.cusd.asset,
+                amount_cusd
             );
 
         val lp = utils.register_lp(asset1);
@@ -231,7 +231,7 @@ namespace UNSAFE {
             asset1.id,
             asset1,
             amount1,
-            amount_ccy,
+            amount_cusd,
             lp_token = lp,
             lp_account,
         );

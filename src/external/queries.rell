@@ -26,7 +26,7 @@ query get_all_pairs_by_liquidity(
             
             .rowid > (before_rowid ?: rowid(0))
         } (
-          @omit @sort_desc .amount_ccy,
+          @omit @sort_desc .amount_cusd,
           utils.extract_pair_info($.to_struct(), .rowid)
         ) limit ft_utils.fetch_data_size(page_size),
         page_size

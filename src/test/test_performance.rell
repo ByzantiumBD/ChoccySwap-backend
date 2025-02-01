@@ -21,7 +21,7 @@ function test_10000_orders() {
     print("\n\n\n============\n\nStarting performance test...");
     print("\n\nEVENT\tTIME\tDELTA");
 
-    val curr_price = pairs.calc_price(p.amount1, p.amount_ccy, false);
+    val curr_price = pairs.calc_price(p.amount1, p.amount_cusd, false);
     var order_price = curr_price - 10L;
 
     var partial = ft_utils.latest_time() - start;
@@ -45,7 +45,7 @@ function test_10000_orders() {
         p, end_price, false
     );
 
-    tu.give_balance(alice, main.ccy.asset, amount_to_swap);
+    tu.give_balance(alice, main.cusd.asset, amount_to_swap);
 
     old_total = total;
     total = ft_utils.latest_time() - start;

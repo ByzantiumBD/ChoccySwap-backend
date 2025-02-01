@@ -1,0 +1,45 @@
+module;
+
+import lib.ft4.accounts;
+import lib.ft4.auth;
+import ^.main;
+
+object admin {
+    mutable account_id: byte_array = x"DF2F7D255644DB904CFEB678E7CECAC919598C2BB7148D203AEC40573964185F";
+    mutable dex_locked: boolean = true;
+}
+
+function before_dex_interaction(accounts.account) {
+    if (not admin.dex_locked) { return; }
+    require(
+        account.id == admin.account_id,
+        "Only admin can interact with the dex at this time"
+    );
+}
+
+operation lock_dex() {
+    val a = auth.authenticate();
+    require(
+        a.id == admin.account_id,
+        "Only admin can lock the dex"
+    );
+    admin.dex_locked = true;
+}
+
+operation unlock_dex() {
+    val a = auth.authenticate();
+    require(
+        a.id == admin.account_id,
+        "Only admin can unlock the dex"
+    );
+    admin.dex_locked = false;
+}
+
+operation set_admin(new_admin: byte_array) {
+    val a = auth.authenticate();
+    require(
+        a.id == admin.account_id,
+        "Only admin can set a new admin"
+    );
+    admin.account_id = new_admin;
+}

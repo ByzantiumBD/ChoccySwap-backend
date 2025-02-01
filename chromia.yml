@@ -1,5 +1,5 @@
 blockchains:
-  sweetest_dex_on_chromia:
+  choccy_swap:
     module: main
 
 libs:
@@ -22,7 +22,11 @@ deployments:
     url: https://node0.testnet.chromia.com:7740 # Target URL for one of the nodes in Testnet
     container: e04176fb4729d927088c9003b892ce052bc1f0417d225fae7d4b16df2ef1c8aa
     chains:
-      sweetest_dex_on_chromia: x"FA289E086E3D6C3277336E270BADDF75035C1F049F242AB2CF61773D2822213D"
+      choccy_swap: x"FA289E086E3D6C3277336E270BADDF75035C1F049F242AB2CF61773D2822213D"
+  mainnet:
+    brid: x"7E5BE539EF62E48DDA7035867E67734A70833A69D2F162C457282C319AA58AE4"
+    url: https://dapps0.chromaway.com:7740
+    container: 6e1e6163c66d87181796bb2fc664730a787f7fe7973183587c7ab4f908292c1f
 
 compile:
   rellVersion: 0.14.0

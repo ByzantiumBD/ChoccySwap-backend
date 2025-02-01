@@ -17,7 +17,7 @@ function test_order() {
         10000L, 10000L
     );
 
-    val curr_price = pairs.calc_price(p.amount1, p.amount_ccy, false);
+    val curr_price = pairs.calc_price(p.amount1, p.amount_cusd, false);
     assert_equals(curr_price, pairs.PRICE_PRECISION);
 
     tu.give_balance(alice, p.asset1, 10000L);
@@ -72,8 +72,8 @@ function test_order() {
     val all_orders = orderbook.order @* {};
     assert_equals(all_orders.size(), 1);
     assert_equals(
-        all_orders @ {} (.pair, .price, .buy_ccy, .amount),
-        (pair=p, price=curr_price-1L, buy_ccy=true, amount=10000L)
+        all_orders @ {} (.pair, .price, .buy_cusd, .amount),
+        (pair=p, price=curr_price-1L, buy_cusd=true, amount=10000L)
     );
 }
 
@@ -120,7 +120,7 @@ function test_swaps_use_orders() {
             p.asset1.id,
             true,
             10000L,
-            3324L + amount_worth_5k_dollars + 1L, // too much
+            3324L + amount_worth_5k_dollars + 2L, // too much (with rounding error)
             ft_utils.latest_time() + 100000
         ),
         rell.test.keypairs.alice,
@@ -139,7 +139,7 @@ function test_swaps_use_orders() {
     );
 }
 
-function test_sell_ccy() {
+function test_sell_cusd() {
     val alice = tu.get_account(rell.test.keypairs.alice.pub);
     val p = tu.create_pool(
         10000L, 10000L
@@ -147,23 +147,23 @@ function test_sell_ccy() {
 
     // simulating a swap of 10k, 5k into pool and 5k into an order
     
-    val price_after_5k_ccy_sold = pairs.pair_functions.calc_swap_end_price_and_output(
+    val price_after_5k_cusd_sold = pairs.pair_functions.calc_swap_end_price_and_output(
         p.to_struct(), 5000L, false
     ).end_price;
-    val amount_worth_5k_ccy = 5000L*price_after_5k_ccy_sold/pairs.PRICE_PRECISION;
+    val amount_worth_5k_cusd = 5000L*price_after_5k_cusd_sold/pairs.PRICE_PRECISION;
     
     tu.create_order(
-        p, true, amount_worth_5k_ccy, price_after_5k_ccy_sold
+        p, true, amount_worth_5k_cusd, price_after_5k_cusd_sold
     );
 
-    tu.give_balance(alice, main.ccy.asset, 10001L);
+    tu.give_balance(alice, main.cusd.asset, 10001L);
 
     tu.expect_failure(
         ext.swap(
             p.asset1.id,
             false,
             20000L, // too much
-            3324L + amount_worth_5k_ccy,
+            3324L + amount_worth_5k_cusd,
             ft_utils.latest_time() + 100000
         ),
         rell.test.keypairs.alice,
@@ -175,7 +175,7 @@ function test_sell_ccy() {
             p.asset1.id,
             false,
             10000L + 1L, // rounding error 
-            3324L + amount_worth_5k_ccy + 1L, // too much
+            3324L + amount_worth_5k_cusd + 2L, // too much (with rounding error)
             ft_utils.latest_time() + 100000
         ),
         rell.test.keypairs.alice,
@@ -187,7 +187,7 @@ function test_sell_ccy() {
             p.asset1.id,
             false,
             10000L + 1L, // rounding error
-            3324L + amount_worth_5k_ccy,
+            3324L + amount_worth_5k_cusd,
             ft_utils.latest_time() + 100000
         ),
         rell.test.keypairs.alice
@@ -317,7 +317,7 @@ function test_orders_get_deleted_after_expiration() {
     // expired order not deleted since Bob is not the owner
     assert_equals((orderbook.order @* {}).size(), 2);
 
-    tu.give_balance(bob, main.ccy.asset, 200L);
+    tu.give_balance(bob, main.cusd.asset, 200L);
     tu.run(
         ext.swap(
             p.id,

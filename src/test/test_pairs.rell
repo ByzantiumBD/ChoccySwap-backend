@@ -22,7 +22,7 @@ function test_mint_limit() {
 function test_adds_liq() {
     val alice = tu.get_account(rell.test.keypairs.alice.pub);
     val coin1 = tu.get_asset("add_liq_test1", 18);
-    val coin2 = main.ccy.asset;
+    val coin2 = main.cusd.asset;
 
     tu.give_balance(alice, coin1);
     tu.give_balance(alice, coin2);
@@ -49,10 +49,10 @@ function test_removes_liq() {
     /** adds liq **/
     val alice = tu.get_account(rell.test.keypairs.alice.pub);
     val coin1 = tu.get_asset("remove_liq_test1", 18);
-    val coin2 = main.ccy.asset;
+    val coin2 = main.cusd.asset;
 
     val am1 = 10000000000000000000L;
-    val am_ccy = 100000000000L;
+    val am_cusd = 100000000000L;
 
     tu.give_balance(alice, coin1);
     tu.give_balance(alice, coin2);
@@ -61,7 +61,7 @@ function test_removes_liq() {
         ext.add_liq(
             coin1.id,
             am1,
-            am_ccy
+            am_cusd
         ),
         rell.test.keypairs.alice
     );
@@ -71,7 +71,7 @@ function test_removes_liq() {
         ext.remove_liq(
             coin1.id,
             am1,
-            am_ccy
+            am_cusd
         ),
         rell.test.keypairs.alice,
         "Insufficient balance"
@@ -80,7 +80,7 @@ function test_removes_liq() {
     /*
     from removed_lps = (lp.total_supply * am1) / pair.amount1;
     
-    lp supply is sqrt(pair.am1 * pair.am_ccy), calling this "tot";
+    lp supply is sqrt(pair.am1 * pair.am_cusd), calling this "tot";
     max value for removed_lps = total LPs - 1000L (get burnt on creation)
 
     tot - 1000 = tot * am1 / pair.am1
@@ -91,20 +91,20 @@ function test_removes_liq() {
 
     pair.am1 - (1000 * pair.am1)/tot
 
-    where tot is sqrt(pair.am1 * pair.am_ccy)
+    where tot is sqrt(pair.am1 * pair.am_cusd)
     Further simplified:
 
-    pair.am1 - (1000 * pair.am1)/sqrt(pair.am1 * pair.am_ccy)
-    pair.am1 - (1000 * sqrt(pair.am1 / pair.am_ccy))
+    pair.am1 - (1000 * pair.am1)/sqrt(pair.am1 * pair.am_cusd)
+    pair.am1 - (1000 * sqrt(pair.am1 / pair.am_cusd))
     */
-    val removable_liq = am1 - 1000L * pairs.sqrt(am1/am_ccy);
+    val removable_liq = am1 - 1000L * pairs.sqrt(am1/am_cusd);
 
     /** removes liq **/
     tu.run(
         ext.remove_liq(
             coin1.id,
             removable_liq,
-            am_ccy // this amount will be pulled down to match the amount above
+            am_cusd // this amount will be pulled down to match the amount above
         ),
         rell.test.keypairs.alice
     );
