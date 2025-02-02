@@ -35,10 +35,10 @@ query find_dapp_details(dapp_rowid: rowid, requested_content_types: list<dapp_co
 function get_dapp_media(requested_content_types: list<dapp_content_type>? = null): list<dapp_media>? {
 
     val ec_media: map<dapp_content_type, dapp_media> = [
-        dapp_content_type.icon: dapp_media(name = "icon1", url = "https://www.choc.cy/icon_vault.svg", dapp_content_type.icon), // url of the media
-        dapp_content_type.landscape: dapp_media(name = "landscape1", url = "https://www.choc.cy/landscape_vault.png", dapp_content_type.landscape), // url of the media
-        dapp_content_type.portrait: dapp_media(name = "portrait1", url = "https://www.choc.cy/portrait_vault.png", dapp_content_type.portrait), // url of the media
-        dapp_content_type.promotional: dapp_media(name = "promotional1", url = "https://www.choc.cy/promotional_vault.png", dapp_content_type.promotional), // url of the media
+        dapp_content_type.icon: dapp_media(name = "icon1", url = "https://www.choc.cy/swap/icon_vault.svg", dapp_content_type.icon), // url of the media
+        dapp_content_type.landscape: dapp_media(name = "landscape1", url = "https://www.choc.cy/swap/landscape_vault.png", dapp_content_type.landscape), // url of the media
+        dapp_content_type.portrait: dapp_media(name = "portrait1", url = "https://www.choc.cy/swap/portrait_vault.png", dapp_content_type.portrait), // url of the media
+        dapp_content_type.promotional: dapp_media(name = "promotional1", url = "https://www.choc.cy/swap/promotional_vault.png", dapp_content_type.promotional), // url of the media
     ];
 
     if (not empty(requested_content_types)) {
