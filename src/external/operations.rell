@@ -1,33 +1,12 @@
 val MAX_ORDER_AMOUNT = 5;
 
-operation receive_balance(){
-    val a = auth.authenticate();
-    utils.limit_mints(a, ft_utils.latest_time());
-    for (c in assets.asset @* {}) {
-        assets.Unsafe.mint(a, c, big_integer("1"+"0".repeat(c.decimals)));
-    }
-}
-
-operation create_account(pubkey:byte_array) {
-    val acc = accounts.create_account_with_auth(
-        accounts.auth_descriptor(
-            accounts.auth_type.S,
-            [
-                set(["A", "T"]).to_gtv(),
-                pubkey.to_gtv()
-            ],
-            null.to_gtv()
-        )
-    );
-}
-
 operation add_liq(
     asset1: byte_array,
     amount1: big_integer,
     amount_cusd: big_integer
 ) {
     val account = auth.authenticate();
-    locking.before_dex_interaction(account);
+    admin.before_dex_interaction(account);
 
     require(amount1>0 and amount_cusd>0, "Cannot add negative liquidity");
 
@@ -78,7 +57,7 @@ operation remove_liq(
     amount_cusd: big_integer
 ) {
     val account = auth.authenticate();
-    locking.before_dex_interaction(account);
+    admin.before_dex_interaction(account);
 
     require(amount1>0 and amount_cusd>0, "Cannot remove negative liquidity");
 
@@ -121,7 +100,7 @@ operation swap(
     require(op_context.last_block_time<=deadline, "Swap request expired");
     require(amount>0, "Amount must be greater than 0: " + amount);
     val account = auth.authenticate();
-    locking.before_dex_interaction(account);
+    admin.before_dex_interaction(account);
 
     val pair = pairs.get_pair(asset);
     
@@ -144,7 +123,7 @@ operation double_swap(
     require(op_context.last_block_time<=deadline, "Swap request expired");
     require(amount>0, "Amount must be greater than 0: " + amount);
     val account = auth.authenticate();
-    locking.before_dex_interaction(account);
+    admin.before_dex_interaction(account);
 
     val pair1 = pairs.get_pair(asset1);
     val pair2 = pairs.get_pair(asset2);
@@ -178,7 +157,7 @@ operation place_order(
     deadline: timestamp
 ) {
     val account = auth.authenticate();
-    locking.before_dex_interaction(account);
+    admin.before_dex_interaction(account);
 
     val all_orders_from_account = orderbook.order @* {
         account, .pair.id == asset
@@ -211,7 +190,7 @@ operation remove_order(
     id: byte_array
 ) {
     val account = auth.authenticate();
-    locking.before_dex_interaction(account);
+    admin.before_dex_interaction(account);
 
     val order_or_null = orderbook.order @? {
         account, id
@@ -233,7 +212,7 @@ operation burn_liq(
     lp_amount:big_integer,
 ) {
     val account = auth.authenticate();
-    locking.before_dex_interaction(account);
+    admin.before_dex_interaction(account);
 
     val pair = pairs.get_pair(asset1);
     assets.Unsafe.transfer(

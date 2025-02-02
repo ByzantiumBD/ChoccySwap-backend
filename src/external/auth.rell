@@ -1,16 +1,3 @@
-function receive_balance_message(gtv) {
-    return "Please sign to receive 1e18 of each token to your account.\n"
-          +"These tokens hold no value, they can only be used for testing.\n"
-          +"You can call this operation up to once per hour";
-}
-
-@extend(auth.auth_handler)
-function () = auth.add_auth_handler(
-    scope = rell.meta(receive_balance).mount_name,
-    flags = ["T"],
-    message = receive_balance_message(*)
-);
-
 function add_liq_message(gtv) {
     val params = struct<add_liq>.from_gtv(gtv);
     val asset1 = assets.Asset(params.asset1);

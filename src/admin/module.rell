@@ -1,0 +1,39 @@
+import lib.ft4.accounts;
+import lib.ft4.assets;
+import lib.ft4.auth;
+import ^.main;
+
+object admin {
+    mutable account_id: byte_array = x"DF2F7D255644DB904CFEB678E7CECAC919598C2BB7148D203AEC40573964185F";
+    mutable dex_locked: boolean = true;
+    fee_account: accounts.account = create_account_if_needed(
+        x"0000000000000000000000000000000000000000000000000000000000000000",
+        "CHOCCY FEE RECIPIENT"
+    );
+}
+
+function create_account_if_needed(account_id: byte_array, type: text) {
+    val account = accounts.account @? {account_id};
+    if (account??) {
+        return account;
+    }
+    return accounts.create_account_without_auth(account_id, type);
+}
+
+operation set_admin(new_admin: byte_array) {
+    val a = auth.authenticate();
+    require(
+        a.id == admin.account_id,
+        "Only admin can set a new admin"
+    );
+    admin.account_id = new_admin;
+}
+
+operation set_cusd(new_cusd_id: byte_array) {
+    val a = auth.authenticate();
+    require(
+        a.id == admin.account_id,
+        "Only admin can set a new cusd"
+    );
+    main.cusd.asset = assets.asset @ { .id == new_cusd_id };
+}

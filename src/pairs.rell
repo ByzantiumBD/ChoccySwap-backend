@@ -44,7 +44,7 @@ function get_pair_or_null(id: byte_array) {
     return pair @? { id };
 }
 
-function get_pair(id: byte_array) {
+function get_pair(id: byte_array): pair {
     val p = pair @? { id };
     require(p??, "Pair not found");
     return p;

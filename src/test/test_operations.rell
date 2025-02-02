@@ -3,11 +3,13 @@ import ^^.utils;
 import ^^.orderbook;
 import ^^.pairs;
 import ^^.main;
+import ^^.admin;
 import lib.ft4.assets;
 import lib.ft4.accounts;
 import lib.ft4.auth;
 
 operation create_acc_test(accounts.auth_descriptor) {
+    admin.admin.dex_locked = false;
     accounts.create_account_with_auth(auth_descriptor);
 }
 operation limit_mint_test(acc_id: byte_array, timestamp) {

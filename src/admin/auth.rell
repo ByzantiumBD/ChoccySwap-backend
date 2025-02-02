@@ -1,0 +1,55 @@
+function lock_dex_message(gtv) {
+    return ("Please sign the message to lock the dex. You must be admin to do this.");
+}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(lock_dex).mount_name,
+    flags = ["A"],
+    message = lock_dex_message(*)
+);
+
+function unlock_dex_message(gtv) {
+    return ("Please sign the message to unlock the dex. You must be admin to do this.");
+}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(unlock_dex).mount_name,
+    flags = ["A"],
+    message = unlock_dex_message(*)
+);
+
+function set_admin_message(gtv) {
+    val params = struct<set_admin>.from_gtv(gtv);
+    return ("Please sign the message to change the admin from:\n\n- %s\nto:\n\n- %s\n\nYou must be admin to do this."
+        .format(
+            admin.account_id,
+            params.new_admin
+        )
+    );
+}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(set_admin).mount_name,
+    flags = ["A"],
+    message = set_admin_message(*)
+);
+
+function set_cusd_message(gtv) {
+    val params = struct<set_cusd>.from_gtv(gtv);
+    return ("Please sign the message to change the cusd from:\n\n- %s\nto:\n\n- %s\n\nYou must be admin to do this."
+        .format(
+            main.cusd.asset.id,
+            params.new_cusd_id
+        )
+    );
+}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(set_cusd).mount_name,
+    flags = ["A"],
+    message = set_cusd_message(*)
+);
