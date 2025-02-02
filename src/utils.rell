@@ -115,7 +115,7 @@ function spend_on_order(
     accounts.account,
     order_struct: struct<orderbook.order>,
     amount: big_integer
-): (spent:big_integer, received:big_integer, fee: big_integer, fully_executed:boolean) {
+): (spent:big_integer, received:big_integer, fully_executed:boolean) {
     require(amount > 0, "Amount must be greater than 0: " + amount);
     val asset1 = order_struct.pair.asset1;
 
@@ -134,7 +134,6 @@ function spend_on_order(
     }
 
     require(amount > 0, "Output must be greater than 0: " + output);
-    val (remainder, fee) = split_amount_for_fee(true, output);
     
     if (input > 0) {
         assets.Unsafe.transfer(
@@ -153,7 +152,7 @@ function spend_on_order(
         update orderbook.order @ { .id == order_struct.id } ( amount -= output );
     }
     
-    return (spent = input, received = output, fee = fee, fully_executed = fully_executed);
+    return (spent = input, received = output, fully_executed = fully_executed);
 }
 
 function split_amount_for_fee(is_order: boolean, amount: big_integer) {
