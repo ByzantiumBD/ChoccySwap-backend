@@ -140,6 +140,12 @@ function swap_with_orderbook(
 ) {
     var to_pay = amount;
     var received = 0L;
+    var total_maker_fee = 0L;
+    val order_acc = accounts.ensure_account_without_auth(
+        get_order_account_id(pair),
+        ACC_TYPE_ORDER
+    );
+
 
     val pair_at_start_struct = pair.to_struct();
 
@@ -197,7 +203,7 @@ function swap_with_orderbook(
 
             last_processed += 1;
             val order_to_process = orders[last_processed];
-            val (spent, rec, fully_executed) = utils.spend_on_order(
+            val (spent, rec, maker_fee, fully_executed) = utils.spend_on_order(
                 account,
                 order_to_process,
                 to_pay
@@ -212,7 +218,8 @@ function swap_with_orderbook(
             } else {
                 orders_to_delete.add(order_to_process.id);
             }
-            
+
+            total_maker_fee += maker_fee;
             to_pay -= spent;
             received += rec;
         }
@@ -223,6 +230,39 @@ function swap_with_orderbook(
         }
         safety = to_pay;
     }
+
+    val (taker_amount, taker_fee) = utils.split_amount_for_fee(
+        true,
+        received
+    );
+
+    if(taker_amount > 0L){
+        assets.Unsafe.transfer(
+            order_acc,
+            account,
+            if (buy_cusd) main.cusd.asset else pair.asset1,
+            taker_amount 
+        ); 
+    }
+
+    if(taker_fee > 0L){
+        assets.Unsafe.transfer(
+            order_acc,
+            pair.account,
+            if (buy_cusd) main.cusd.asset else pair.asset1,
+            taker_fee
+        );
+    }
+
+    if (total_maker_fee > 0L) {
+        assets.Unsafe.transfer(
+            order_acc,
+            pair.account,
+            if (buy_cusd) pair.asset1 else main.cusd.asset,
+            total_maker_fee 
+        );
+    }
+
 
     if (received < amount_min) {
         val asset = if (buy_cusd) main.cusd.asset else pair.asset1;
