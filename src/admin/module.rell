@@ -13,11 +13,28 @@ object admin {
 }
 
 function create_account_if_needed(account_id: byte_array, type: text) {
-    val account = accounts.account @? {account_id};
+    val account = accounts.account @? { account_id };
     if (account??) {
         return account;
     }
     return accounts.create_account_without_auth(account_id, type);
+}
+
+operation retrieve_fees() {
+    val a = auth.authenticate();
+    require(
+        a.id == admin.account_id,
+        "Only admin can set a new admin"
+    );
+    val balances = assets.balance @* { admin.fee_account };
+    for (b in balances) {
+        assets.Unsafe.transfer(
+            admin.fee_account,
+            a,
+            b.asset,
+            b.amount,
+        );
+    }
 }
 
 operation set_admin(new_admin: byte_array) {

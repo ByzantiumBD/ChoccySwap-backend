@@ -1,3 +1,14 @@
+function retrieve_fees_message(gtv) {
+    return ("Please sign the message to retrieve the accumulated fees. You must be admin to do this.");
+}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(retrieve_fees).mount_name,
+    flags = ["A"],
+    message = retrieve_fees_message(*)
+);
+
 function lock_dex_message(gtv) {
     return ("Please sign the message to lock the dex. You must be admin to do this.");
 }
