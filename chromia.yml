@@ -1,34 +1,7 @@
 blockchains:
   choccy_swap:
     module: main
-    moduleArgs:
-      lib.ft4.core.accounts.strategies.transfer:
-        rules:
-          - sender_blockchain: "*"
-            sender: "*"
-            recipient: "*"
-            asset:
-              - id: x"5F16D1545A0881F971B164F1601CBBF51C29EFD0633B2730DA18C403C3B428B5"
-                min_amount: 10000000L
-            timeout_days: 3
-            strategy:
-            - "fee"
-          - sender_blockchain: "*"
-            sender: "*"
-            recipient: "*"
-            asset:
-              - name: "ChoccyUSD"
-                min_amount: 1000000000000000000L
-            timeout_days: 3
-            strategy:
-            - "fee"
-      lib.ft4.core.accounts.strategies.transfer.fee:
-        asset:
-          - id: x"5F16D1545A0881F971B164F1601CBBF51C29EFD0633B2730DA18C403C3B428B5"
-            amount: 10000000L
-          - id: x"ChoccyUSD"
-            amount: 1000000000000000000L
-
+    moduleArgs: !include ras.yaml
 
 libs:
   ft4:
@@ -64,31 +37,6 @@ test:
     - test.test_pairs
     - test.test_swaps
     - test.test_orders
+    - test.test_admin
     - test.test_performance
-  moduleArgs:
-    lib.ft4.core.accounts.strategies.transfer:
-      rules:
-        - sender_blockchain: "*"
-          sender: "*"
-          recipient: "*"
-          asset:
-            - id: x"5F16D1545A0881F971B164F1601CBBF51C29EFD0633B2730DA18C403C3B428B5"
-              min_amount: 10000000L
-          timeout_days: 3
-          strategy:
-          - "fee"
-        - sender_blockchain: "*"
-          sender: "*"
-          recipient: "*"
-          asset:
-            - name: "ChoccyUSD"
-              min_amount: 1000000000000000000L
-          timeout_days: 3
-          strategy:
-          - "fee"
-    lib.ft4.core.accounts.strategies.transfer.fee:
-      asset:
-        - id: x"5F16D1545A0881F971B164F1601CBBF51C29EFD0633B2730DA18C403C3B428B5"
-          amount: 10000000L
-        - id: x"ChoccyUSD"
-          amount: 1000000000000000000L
+  moduleArgs: !include ras.yaml

@@ -8,6 +8,20 @@ import lib.ft4.assets;
 import lib.ft4.accounts;
 import lib.ft4.auth;
 
+operation set_admin_trudy() {
+    val trudy = accounts.create_account_with_auth(
+        accounts.auth_descriptor(
+            accounts.auth_type.S,
+            args = [
+                ["A", "T"].to_gtv(),
+                x"023C72ADDB4FDF09AF94F0C94D7FE92A386A7E70CF8A1D85916386BB2535C7B1B1".to_gtv(), // trudy
+            ],
+            rules = null.to_gtv()
+        )
+    );
+    admin.admin.account_id = trudy.id;
+}
+
 operation create_acc_test(accounts.auth_descriptor) {
     admin.admin.dex_locked = false;
     accounts.create_account_with_auth(auth_descriptor);

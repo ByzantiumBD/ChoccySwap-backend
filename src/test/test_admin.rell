@@ -1,0 +1,115 @@
+@test module;
+import ops: ^.test_operations;
+import ^^.external;
+import ^^.admin;
+import ^^.main;
+import ft_utils: lib.ft4.utils;
+import lib.ft4.assets;
+import tu: ^.test_utils;
+
+function setup_alice_with_balance() {
+    val alice = tu.create_account(rell.test.keypairs.alice.pub);
+    val pair = tu.create_pool(100000L, 100000L);
+    tu.give_balance(alice, pair.asset1, 1000L);
+
+    return (account = alice, pair = pair);
+}
+
+function test_lock_unlock_dex() {
+    ops.set_admin_trudy().run();
+
+    val (alice, pair) = setup_alice_with_balance();
+    tu.run(
+        external.swap(
+            pair.id,
+            buy_cusd = true,
+            amount = 10L,
+            amount_min = 0L,
+            deadline = ft_utils.latest_time() + 100000
+        ),
+        rell.test.keypairs.alice
+    );
+
+    tu.run(admin.lock_dex(), rell.test.keypairs.trudy);
+
+    tu.expect_failure(
+        external.swap(
+            pair.id,
+            buy_cusd = true,
+            amount = 10L,
+            amount_min = 0L,
+            deadline = ft_utils.latest_time() + 100000
+        ),
+        rell.test.keypairs.alice,
+        "Only admin can interact with the dex at this time"
+    );
+
+    tu.run(admin.unlock_dex(), rell.test.keypairs.trudy);
+
+    tu.run(
+        external.swap(
+            pair.id,
+            buy_cusd = true,
+            amount = 10L,
+            amount_min = 0L,
+            deadline = ft_utils.latest_time() + 100000
+        ),
+        rell.test.keypairs.alice
+    );
+}
+
+function test_set_admin() {
+    ops.set_admin_trudy().run();
+    val alice = tu.create_account(rell.test.keypairs.alice.pub);
+    val bob = tu.create_account(rell.test.keypairs.bob.pub);
+
+    tu.run(
+        admin.set_admin(alice.id),
+        rell.test.keypairs.trudy
+    );
+    assert_equals(admin.admin.account_id, alice.id);
+
+    tu.expect_failure(
+        admin.set_admin(bob.id),
+        rell.test.keypairs.trudy,
+        "Only admin can set a new admin"
+    );
+    assert_equals(admin.admin.account_id, alice.id);
+
+    tu.run(
+        admin.set_admin(bob.id),
+        rell.test.keypairs.alice
+    );
+    assert_equals(admin.admin.account_id, bob.id);
+}
+
+function test_set_cusd() {
+    ops.set_admin_trudy().run();
+    val alice = tu.create_account(rell.test.keypairs.alice.pub);
+    val asset1 = tu.get_asset("abc");
+    val asset2 = tu.get_asset("def");
+
+    tu.run(admin.set_cusd(asset1.id), rell.test.keypairs.trudy);
+    assert_equals(main.cusd.asset, asset1);
+
+    tu.run(admin.set_cusd(asset2.id), rell.test.keypairs.trudy);
+    assert_equals(main.cusd.asset, asset2);
+}
+
+function test_can_retrieve_fees() {
+    ops.set_admin_trudy().run();
+    val alice = tu.create_account(rell.test.keypairs.alice.pub);
+    val asset1 = tu.get_asset("abc");
+    val asset2 = tu.get_asset("def");
+
+    tu.give_balance(admin.admin.fee_account, asset1, 1000L);
+    tu.give_balance(admin.admin.fee_account, asset2, 1000L);
+
+    tu.expect_failure(admin.retrieve_fees(), rell.test.keypairs.alice, "Only admin can retrieve fees");
+    tu.run(admin.retrieve_fees(), rell.test.keypairs.trudy);
+
+    assert_null(assets.balance @? { admin.admin.fee_account, asset1 });
+    assert_null(assets.balance @? { admin.admin.fee_account, asset2 });
+    assert_equals(assets.balance @ { .account.id == admin.admin.account_id, asset1 } .amount, 1000L);
+    assert_equals(assets.balance @ { .account.id == admin.admin.account_id, asset2 } .amount, 1000L);
+}

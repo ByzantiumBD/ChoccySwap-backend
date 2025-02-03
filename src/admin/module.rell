@@ -24,7 +24,7 @@ operation retrieve_fees() {
     val a = auth.authenticate();
     require(
         a.id == admin.account_id,
-        "Only admin can set a new admin"
+        "Only admin can retrieve fees"
     );
     val balances = assets.balance @* { admin.fee_account };
     for (b in balances) {
