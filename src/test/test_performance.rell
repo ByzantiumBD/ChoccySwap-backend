@@ -45,7 +45,7 @@ function test_10000_orders() {
         p, end_price, false
     );
 
-    tu.give_balance(alice, main.cusd.asset, amount_to_swap);
+    tu.give_balance(alice, main.get_cusd(), amount_to_swap);
 
     old_total = total;
     total = ft_utils.latest_time() - start;

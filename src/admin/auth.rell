@@ -52,7 +52,7 @@ function set_cusd_message(gtv) {
     val params = struct<set_cusd>.from_gtv(gtv);
     return ("Please sign the message to change the cusd from:\n\n- %s\nto:\n\n- %s\n\nYou must be admin to do this."
         .format(
-            main.cusd.asset.id,
+            main.get_cusd().id,
             params.new_cusd_id
         )
     );
@@ -63,4 +63,21 @@ function () = auth.add_auth_handler(
     scope = rell.meta(set_cusd).mount_name,
     flags = ["A"],
     message = set_cusd_message(*)
+);
+
+function register_cusd_message(gtv) {
+    val params = struct<register_cusd>.from_gtv(gtv);
+    return ("Please sign the message to register the cusd from:\n\n- %s\nwith ID:\n\n- %s\n\nYou must be admin to do this."
+        .format(
+            params.issuing_blockchain_rid,
+            params.cusd_id
+        )
+    );
+}
+
+@extend(auth.auth_handler)
+function () = auth.add_auth_handler(
+    scope = rell.meta(register_cusd).mount_name,
+    flags = ["A"],
+    message = register_cusd_message(*)
 );

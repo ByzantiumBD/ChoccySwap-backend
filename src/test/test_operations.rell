@@ -26,9 +26,6 @@ operation create_acc_test(accounts.auth_descriptor) {
     admin.admin.dex_locked = false;
     accounts.create_account_with_auth(auth_descriptor);
 }
-operation limit_mint_test(acc_id: byte_array, timestamp) {
-    utils.limit_mints(accounts.account @ {acc_id}, timestamp);
-}
 operation register_asset_test(name, decimals: integer) {
     assets.Unsafe.register_asset(
         name,

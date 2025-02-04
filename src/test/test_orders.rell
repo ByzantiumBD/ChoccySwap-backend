@@ -156,7 +156,7 @@ function test_sell_cusd() {
         p, true, amount_worth_5k_cusd, price_after_5k_cusd_sold
     );
 
-    tu.give_balance(alice, main.cusd.asset, 10001L);
+    tu.give_balance(alice, main.get_cusd(), 10001L);
 
     tu.expect_failure(
         ext.swap(
@@ -317,7 +317,7 @@ function test_orders_get_deleted_after_expiration() {
     // expired order not deleted since Bob is not the owner
     assert_equals((orderbook.order @* {}).size(), 2);
 
-    tu.give_balance(bob, main.cusd.asset, 200L);
+    tu.give_balance(bob, main.get_cusd(), 200L);
     tu.run(
         ext.swap(
             p.id,

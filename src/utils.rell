@@ -15,24 +15,6 @@ val SWAP_FEE_PERTHOU = 3L;
 
 val ASSET_TYPE_LP = "CHOCCY_LP_TOKEN";
 
-entity last_mint {
-    key accounts.account;
-    mutable timestamp = 0;
-}
-
-function limit_mints(accounts.account, timestamp) {
-    val last = last_mint @? { account };
-    if (last??) {
-        require(
-            timestamp >= (last.timestamp + 3600000),
-            "You can't mint more than once per hour"
-        );
-        last.timestamp = timestamp;
-    } else {
-        create last_mint ( account, timestamp );
-    }
-}
-
 function extract_order_info(order: struct<orderbook.order>, rowid) {
     val p = order.pair.to_struct();
     return utils.pagination_result(
@@ -64,7 +46,7 @@ function extract_pair_info(pair: struct<pairs.pair>, rowid) {
 }
 
 function get_pair_name(pair: struct<pairs.pair>) {
-    return "%s - %s".format(pair.asset1.symbol, main.cusd.asset.symbol);
+    return "%s - %s".format(pair.asset1.symbol, main.get_cusd().symbol);
 }
 
 function get_price(pair: struct<pairs.pair>) {
@@ -94,14 +76,14 @@ function spend_on_pair(
     assets.Unsafe.transfer(
             account,
             pair.account,
-            if (buy_cusd) asset1 else main.cusd.asset,
+            if (buy_cusd) asset1 else main.get_cusd(),
             amount
         );
 
     assets.Unsafe.transfer(
             pair.account,
             account,
-            if (buy_cusd) main.cusd.asset else asset1,
+            if (buy_cusd) main.get_cusd() else asset1,
             to_amount
         );
 
@@ -140,7 +122,7 @@ function spend_on_order(
         assets.Unsafe.transfer(
             account,
             order_struct.account,
-            if (order_struct.buy_cusd) main.cusd.asset else asset1,
+            if (order_struct.buy_cusd) main.get_cusd() else asset1,
             input
         );
     }
@@ -148,7 +130,7 @@ function spend_on_order(
         assets.Unsafe.transfer(
             order_struct.order_acc,
             account,
-            if (order_struct.buy_cusd) asset1 else main.cusd.asset,
+            if (order_struct.buy_cusd) asset1 else main.get_cusd(),
             remainder,
         );
     }
@@ -156,7 +138,7 @@ function spend_on_order(
         assets.Unsafe.transfer(
             order_struct.order_acc,
             order_struct.pair.account,
-            if (order_struct.buy_cusd) asset1 else main.cusd.asset,
+            if (order_struct.buy_cusd) asset1 else main.get_cusd(),
             fee,
         );
     }

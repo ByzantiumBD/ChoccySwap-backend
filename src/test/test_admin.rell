@@ -90,10 +90,10 @@ function test_set_cusd() {
     val asset2 = tu.get_asset("def");
 
     tu.run(admin.set_cusd(asset1.id), rell.test.keypairs.trudy);
-    assert_equals(main.cusd.asset, asset1);
+    assert_equals(main.get_cusd(), asset1);
 
     tu.run(admin.set_cusd(asset2.id), rell.test.keypairs.trudy);
-    assert_equals(main.cusd.asset, asset2);
+    assert_equals(main.get_cusd(), asset2);
 }
 
 function test_can_retrieve_fees() {

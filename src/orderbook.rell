@@ -65,7 +65,7 @@ function add_order(
     assets.Unsafe.transfer(
             account,
             order_acc,
-            if (buy_cusd) p.asset1 else main.cusd.asset,
+            if (buy_cusd) p.asset1 else main.get_cusd(),
             amount
         );
 
@@ -86,7 +86,7 @@ function remove_order(order) {
     assets.Unsafe.transfer(
             order.order_acc,
             order.account,
-            if (order.buy_cusd) order.pair.asset1 else main.cusd.asset,
+            if (order.buy_cusd) order.pair.asset1 else main.get_cusd(),
             order.amount
         );
 
@@ -225,7 +225,7 @@ function swap_with_orderbook(
     }
 
     if (received < amount_min) {
-        val asset = if (buy_cusd) main.cusd.asset else pair.asset1;
+        val asset = if (buy_cusd) main.get_cusd() else pair.asset1;
         require(
             false,
             ("Swap for <%s>. Amount received too small, the price went out of range. "+

@@ -46,7 +46,7 @@ operation add_liq(
     val added_liq = (pair.lp_token.total_supply * am1) / pair.amount1;
 
     assets.Unsafe.transfer(account, pair.account, pair.asset1, am1);
-    assets.Unsafe.transfer(account, pair.account, main.cusd.asset, am2);
+    assets.Unsafe.transfer(account, pair.account, main.get_cusd(), am2);
     
     assets.Unsafe.mint(account, pair.lp_token, added_liq);
 }
@@ -87,7 +87,7 @@ operation remove_liq(
     assets.Unsafe.burn(account, pair.lp_token, removed_liq);
 
     assets.Unsafe.transfer(pair.account, account, pair.asset1, am1);
-    assets.Unsafe.transfer(pair.account, account, main.cusd.asset, am2);
+    assets.Unsafe.transfer(pair.account, account, main.get_cusd(), am2);
 }
 
 operation swap(
@@ -128,7 +128,7 @@ operation double_swap(
     val pair1 = pairs.get_pair(asset1);
     val pair2 = pairs.get_pair(asset2);
     
-    val starting_cusd_balance = assets.get_asset_balance(account, main.cusd.asset);
+    val starting_cusd_balance = assets.get_asset_balance(account, main.get_cusd());
 
     orderbook.swap_with_orderbook(
         account,
@@ -138,7 +138,7 @@ operation double_swap(
         0L,
     );
 
-    val delta = assets.get_asset_balance(account, main.cusd.asset) - starting_cusd_balance;
+    val delta = assets.get_asset_balance(account, main.get_cusd()) - starting_cusd_balance;
 
     orderbook.swap_with_orderbook(
         account,

@@ -7,22 +7,10 @@ import ops: ^.test_operations;
 import ext: ^^.external;
 import ^^.utils;
 
-function test_mint_limit() {
-    val alice = tu.get_account(rell.test.keypairs.alice.pub);
-    ops.limit_mint_test(alice.id, 3).run();
-    ops.limit_mint_test(alice.id, 4).run_must_fail(
-            "You can't mint more than once per hour"
-        );
-    ops.limit_mint_test(alice.id, 2).run_must_fail(
-            "You can't mint more than once per hour"
-        );
-    ops.limit_mint_test(alice.id, 3600003).run();
-}
-
 function test_adds_liq() {
     val alice = tu.get_account(rell.test.keypairs.alice.pub);
     val coin1 = tu.get_asset("add_liq_test1", 18);
-    val coin2 = main.cusd.asset;
+    val coin2 = main.get_cusd();
 
     tu.give_balance(alice, coin1);
     tu.give_balance(alice, coin2);
@@ -49,7 +37,7 @@ function test_removes_liq() {
     /** adds liq **/
     val alice = tu.get_account(rell.test.keypairs.alice.pub);
     val coin1 = tu.get_asset("remove_liq_test1", 18);
-    val coin2 = main.cusd.asset;
+    val coin2 = main.get_cusd();
 
     val am1 = 10000000000000000000L;
     val am_cusd = 100000000000L;

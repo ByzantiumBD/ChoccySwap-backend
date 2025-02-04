@@ -48,14 +48,14 @@ function run(rell.test.op, signer: rell.test.keypair) {
     rell.test.tx().op(
         test.ft_auth_operation_for(signer.pub),
         op
-    ).sign(signer.priv).run();
+    ).nop().sign(signer.priv).run();
 }
 
 function expect_failure(rell.test.op, signer: rell.test.keypair, text) {
     rell.test.tx().op(
         test.ft_auth_operation_for(signer.pub),
         op
-    ).sign(signer.priv).run_must_fail(text);
+    ).nop().sign(signer.priv).run_must_fail(text);
 }
 
 function create_pool(
@@ -65,7 +65,7 @@ function create_pool(
 ) {
     val trudy = get_account(rell.test.keypairs.trudy.pub);
     val coin = get_asset(coin_name, 18);
-    val cusd = main.cusd.asset;
+    val cusd = main.get_cusd();
 
     give_balance(trudy, coin, amount1);
     give_balance(trudy, cusd, amount_cusd);
@@ -91,7 +91,7 @@ function create_order(
     keypair: rell.test.keypair = rell.test.keypairs.trudy
 ) {
     val trudy = get_account(keypair.pub);
-    val coin = if (buy_cusd) pair.asset1 else main.cusd.asset;
+    val coin = if (buy_cusd) pair.asset1 else main.get_cusd();
 
     give_balance(trudy, coin, amount);
 

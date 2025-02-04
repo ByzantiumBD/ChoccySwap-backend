@@ -6,8 +6,8 @@ function add_liq_message(gtv) {
         .format(
             assets.format_amount_with_decimals(params.amount1, asset1.decimals),
             asset1.symbol,
-            assets.format_amount_with_decimals(params.amount_cusd, main.cusd.asset.decimals),
-            main.cusd.asset.symbol,
+            assets.format_amount_with_decimals(params.amount_cusd, main.get_cusd().decimals),
+            main.get_cusd().symbol,
             asset1.id,
         );
 }
@@ -27,8 +27,8 @@ function remove_liq_message(gtv) {
         .format(
             assets.format_amount_with_decimals(params.amount1, asset1.decimals),
             asset1.symbol,
-            assets.format_amount_with_decimals(params.amount_cusd, main.cusd.asset.decimals),
-            main.cusd.asset.symbol,
+            assets.format_amount_with_decimals(params.amount_cusd, main.get_cusd().decimals),
+            main.get_cusd().symbol,
             asset1.id,
         );
 }
@@ -65,8 +65,8 @@ function swap_message(gtv) {
     val asset = assets.Asset(params.asset);
     val buy_cusd = params.buy_cusd;
 
-    val asset1 = if (buy_cusd) asset else main.cusd.asset;
-    val asset2 = if (buy_cusd) main.cusd.asset else asset;
+    val asset1 = if (buy_cusd) asset else main.get_cusd();
+    val asset2 = if (buy_cusd) main.get_cusd() else asset;
     return ("Please sign the message to swap <%s %s> for <%s>.\n\n"
             +"The swap will be cancelled if not completed before timestamp: <%s> (ms)\n\n"
             +"Slippage protection:\n\n  minimum return value:\n  - <%s %s>\n"
@@ -121,8 +121,8 @@ function place_order_message(gtv) {
     val pair = pairs.get_pair(params.asset);
     val buy_cusd = params.buy_cusd;
     val (asset_in, asset_out) = if (buy_cusd)
-        (pair.asset1, main.cusd.asset)
-        else (main.cusd.asset, pair.asset1);
+        (pair.asset1, main.get_cusd())
+        else (main.get_cusd(), pair.asset1);
 
     val amount_out = if (buy_cusd)
         params.amount * pairs.PRICE_PRECISION / params.price
@@ -162,7 +162,7 @@ function remove_order_message(gtv) {
     val asset = pair.asset1;
     val amount_string = assets.format_amount_with_decimals(
         order.amount,
-        if (buy_cusd) asset.decimals else main.cusd.asset.decimals
+        if (buy_cusd) asset.decimals else main.get_cusd().decimals
     );
 
     action = if (buy_cusd)

@@ -218,7 +218,7 @@ namespace UNSAFE {
         assets.Unsafe.transfer(
                 account,
                 lp_account,
-                main.cusd.asset,
+                main.get_cusd(),
                 amount_cusd
             );
 

@@ -46,7 +46,7 @@ function(
         if (from_pool??) {
             when (asset) {
                 from_pool.asset1 -> from_pool.amount1 -= amount;
-                main.cusd.asset -> from_pool.amount_cusd -= amount;
+                main.get_cusd() -> from_pool.amount_cusd -= amount;
                 from_pool.lp_token -> {}
                 else -> require(
                     false,
@@ -57,7 +57,7 @@ function(
         if (to_pool??) {
             when (asset) {
                 to_pool.asset1 -> to_pool.amount1 += amount;
-                main.cusd.asset -> to_pool.amount_cusd += amount;
+                main.get_cusd() -> to_pool.amount_cusd += amount;
                 to_pool.lp_token -> {}
                 else -> require(
                     false,

@@ -1,6 +1,7 @@
 import lib.ft4.accounts;
 import lib.ft4.assets;
 import lib.ft4.auth;
+import lib.ft4.crosschain;
 import ^.main;
 
 object admin {
@@ -52,5 +53,24 @@ operation set_cusd(new_cusd_id: byte_array) {
         a.id == admin.account_id,
         "Only admin can set a new cusd"
     );
-    main.cusd.asset = assets.asset @ { .id == new_cusd_id };
+    main.cusd.asset_id = new_cusd_id;
+}
+
+operation register_cusd(cusd_id: byte_array, issuing_blockchain_rid: byte_array) {
+    val a = auth.authenticate();
+    require(
+        a.id == admin.account_id,
+        "Only admin can register a new cusd"
+    );
+    crosschain.Unsafe.register_crosschain_asset(
+        cusd_id,
+        "Choccy USD",
+        "CUSD",
+        18,
+        issuing_blockchain_rid,
+        "https://www.choc.cy/cusd.svg",
+        assets.ASSET_TYPE_FT4,
+        x"",
+        issuing_blockchain_rid
+    );
 }

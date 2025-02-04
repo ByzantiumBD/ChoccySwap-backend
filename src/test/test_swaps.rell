@@ -47,12 +47,12 @@ function test_swap() {
     assert_equals(
         assets.balance @ {
             .account == alice,
-            .asset == main.cusd.asset
+            .asset == main.get_cusd()
         } .amount,
         expected_amount_out
     );
 
-    tu.give_balance(alice, main.cusd.asset, 10000L);
+    tu.give_balance(alice, main.get_cusd(), 10000L);
     val expected_2 = utils.split_amount_for_fee(false, (p.amount1 / 2L)).remainder;
 
     tu.expect_failure(
@@ -115,7 +115,7 @@ function test_double_swap() {
     assert_false(
         assets.balance @? {
             .account == alice,
-            .asset == main.cusd.asset
+            .asset == main.get_cusd()
         }??
     );
     // alice has expected "asset2"
