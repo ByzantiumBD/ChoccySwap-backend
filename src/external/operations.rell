@@ -103,7 +103,10 @@ operation swap(
     admin.before_dex_interaction(account);
 
     val pair = pairs.get_pair(asset);
-    
+
+    val balance = assets.get_asset_balance(account, if (buy_cusd) pair.asset1 else main.get_cusd());
+    require(balance >= amount, "Insufficient balance for swap: " + balance);
+
     orderbook.swap_with_orderbook(
         account,
         pair,
@@ -127,6 +130,9 @@ operation double_swap(
 
     val pair1 = pairs.get_pair(asset1);
     val pair2 = pairs.get_pair(asset2);
+
+    val balance = assets.get_asset_balance(account, pair1.asset1);
+    require(balance >= amount, "Insufficient balance for double swap: " + balance);
     
     val starting_cusd_balance = assets.get_asset_balance(account, main.get_cusd());
 
@@ -139,6 +145,7 @@ operation double_swap(
     );
 
     val delta = assets.get_asset_balance(account, main.get_cusd()) - starting_cusd_balance;
+    require(delta > 0L, "No cusd received from first swap");
 
     orderbook.swap_with_orderbook(
         account,
@@ -172,7 +179,7 @@ operation place_order(
         "An order for this price and this account already exists on this pair. Please remove it first."
     );
     require(
-        price < pairs.PRICE_PRECISION*pairs.PRICE_PRECISION,
+        price < pairs.PRICE_PRECISION*pairs.PRICE_PRECISION and price > 0L,
         "Price out of the acceptable range"
     );
 

@@ -24,6 +24,17 @@ operation set_admin_trudy() {
 
 operation create_acc_test(accounts.auth_descriptor) {
     admin.admin.dex_locked = false;
+
+    if (main.cusd.asset_id == x"") {
+        val cusd = assets.Unsafe.register_asset(
+            "Choccy USD",
+            "CUSD",
+            18,
+            chain_context.blockchain_rid,
+            "http://choc.cy/cusd.svg"
+        );
+        main.cusd.asset_id = cusd.id;
+    }
     accounts.create_account_with_auth(auth_descriptor);
 }
 operation register_asset_test(name, decimals: integer) {
@@ -55,10 +66,7 @@ operation empty_auth() {
 operation performance_test(account_id: byte_array, pair_id: byte_array, price: big_integer) {
     val trudy = accounts.account @ { account_id };
     val p = pairs.pair @ { pair_id };
-    val order_acc = accounts.ensure_account_without_auth(
-        x"aa",
-        "AA"
-    );
+    val order_acc = utils.ensure_order_account(p);
     assets.Unsafe.mint(
         order_acc,
         p.asset1,

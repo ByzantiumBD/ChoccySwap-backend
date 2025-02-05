@@ -11,7 +11,7 @@ function setup_alice_with_balance() {
     val alice = tu.create_account(rell.test.keypairs.alice.pub);
     val pair = tu.create_pool(100000L, 100000L);
     tu.give_balance(alice, pair.asset1, 1000L);
-
+    
     return (account = alice, pair = pair);
 }
 

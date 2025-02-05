@@ -101,18 +101,24 @@ function test_swaps_use_orders() {
         p, false, amount_worth_5k_dollars, price_after_5k_dollars_sold
     );
 
-    tu.give_balance(alice, p.asset1, 10001L);
+    val expected_amount_out =
+        // swap output
+        utils.split_amount_for_fee(false, 3334L).remainder + 
+        // order output + rounding error
+        utils.split_amount_for_fee(true, amount_worth_5k_dollars).remainder + 1L;
+
+    tu.give_balance(alice, p.asset1, 10000L);
 
     tu.expect_failure(
         ext.swap(
             p.asset1.id,
             true,
             20000L, // too much
-            3324L + amount_worth_5k_dollars,
+            expected_amount_out,
             ft_utils.latest_time() + 100000
         ),
         rell.test.keypairs.alice,
-        "Balance is too low"
+        "Insufficient balance for swap"
     );
 
     tu.expect_failure(
@@ -120,7 +126,7 @@ function test_swaps_use_orders() {
             p.asset1.id,
             true,
             10000L,
-            3324L + amount_worth_5k_dollars + 2L, // too much (with rounding error)
+            expected_amount_out + 1L,
             ft_utils.latest_time() + 100000
         ),
         rell.test.keypairs.alice,
@@ -132,11 +138,36 @@ function test_swaps_use_orders() {
             p.asset1.id,
             true,
             10000L,
-            3324L + amount_worth_5k_dollars,
+            expected_amount_out,
             ft_utils.latest_time() + 100000
         ),
         rell.test.keypairs.alice
     );
+
+    assert_equals(assets.get_asset_balance(alice, p.asset1), 0L);
+    assert_equals(assets.get_asset_balance(alice, main.get_cusd()), expected_amount_out);
+
+    val order_placer = tu.get_account(rell.test.keypairs.trudy.pub);
+
+    assert_equals(
+        assets.get_asset_balance(order_placer, p.asset1),
+        // rounding error
+        utils.split_amount_for_fee(true, 4999L).remainder
+    );
+    assert_equals(assets.get_asset_balance(order_placer, main.get_cusd()), 0L);
+
+    assert_equals(
+        assets.get_asset_balance(p.account, p.asset1),
+        10000L + 5000L +
+        utils.split_amount_for_fee(true, 5000L).fee
+    );
+    assert_equals(
+        assets.get_asset_balance(p.account, main.get_cusd()),
+        6676L - 1L + // rounding error
+        utils.split_amount_for_fee(true, amount_worth_5k_dollars).fee
+    );
+    assert_equals(assets.get_asset_balance(utils.ensure_order_account(p), p.asset1), 0L);
+    assert_equals(assets.get_asset_balance(utils.ensure_order_account(p), main.get_cusd()), 0L);
 }
 
 function test_sell_cusd() {
@@ -156,26 +187,32 @@ function test_sell_cusd() {
         p, true, amount_worth_5k_cusd, price_after_5k_cusd_sold
     );
 
-    tu.give_balance(alice, main.get_cusd(), 10001L);
+    tu.give_balance(alice, main.get_cusd(), 10000L);
+
+    val expected_amount_out =
+        // swap output
+        utils.split_amount_for_fee(false, 3334L).remainder + 
+        // order output
+        utils.split_amount_for_fee(true, amount_worth_5k_cusd).remainder;
 
     tu.expect_failure(
         ext.swap(
             p.asset1.id,
             false,
             20000L, // too much
-            3324L + amount_worth_5k_cusd,
+            expected_amount_out,
             ft_utils.latest_time() + 100000
         ),
         rell.test.keypairs.alice,
-        "Balance is too low"
+        "Insufficient balance for swap"
     );
 
     tu.expect_failure(
         ext.swap(
             p.asset1.id,
             false,
-            10000L + 1L, // rounding error 
-            3324L + amount_worth_5k_cusd + 2L, // too much (with rounding error)
+            10000L, 
+            expected_amount_out + 1L,
             ft_utils.latest_time() + 100000
         ),
         rell.test.keypairs.alice,
@@ -186,8 +223,8 @@ function test_sell_cusd() {
         ext.swap(
             p.asset1.id,
             false,
-            10000L + 1L, // rounding error
-            3324L + amount_worth_5k_cusd,
+            10000L,
+            expected_amount_out,
             ft_utils.latest_time() + 100000
         ),
         rell.test.keypairs.alice
@@ -244,9 +281,9 @@ function test_swaps_with_multiple_orders() {
 
     val expected_amount_out = 
         last_swap.out_amount +
-        amount_worth_1k_dollars +
-        amount_worth_2k_dollars +
-        amount_worth_6k_dollars / 2;
+        utils.split_amount_for_fee(true, amount_worth_1k_dollars).remainder +
+        utils.split_amount_for_fee(true, amount_worth_2k_dollars).remainder +
+        utils.split_amount_for_fee(true, amount_worth_6k_dollars / 2L).remainder;
 
     tu.run(
         ext.swap(
@@ -259,7 +296,9 @@ function test_swaps_with_multiple_orders() {
         rell.test.keypairs.alice
     );
 
-    assert_equals(orderbook.order @* {} (.amount), [amount_worth_6k_dollars / 2]);
+    val o = orderbook.order @ {};
+    assert_equals(o.amount, assets.get_asset_balance(o.order_acc, main.get_cusd()));
+    assert_equals(o.amount, (amount_worth_6k_dollars / 2L)-5L); // roundings at every swap
 }
 
 
@@ -465,8 +504,8 @@ function test_remove_orders() {
 
     val expected_amount_out = 
         last_swap.out_amount +
-        amount_worth_4k_dollars +
-        amount_worth_2k_dollars;
+        utils.split_amount_for_fee(true, amount_worth_4k_dollars).remainder +
+        utils.split_amount_for_fee(true, amount_worth_2k_dollars).remainder;
 
     tu.run(
         ext.swap(

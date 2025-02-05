@@ -3,6 +3,7 @@ import ops: ^.test_operations;
 import ^^.main;
 import ^^.external;
 import ^^.pairs;
+import ^^.utils;
 import lib.ft4.accounts;
 import ft_utils: lib.ft4.utils;
 import lib.ft4.assets;
@@ -90,10 +91,10 @@ function create_order(
     deadline: timestamp = ft_utils.latest_time() + 100000,
     keypair: rell.test.keypair = rell.test.keypairs.trudy
 ) {
-    val trudy = get_account(keypair.pub);
+    val acc = get_account(keypair.pub);
     val coin = if (buy_cusd) pair.asset1 else main.get_cusd();
 
-    give_balance(trudy, coin, amount);
+    give_balance(acc, coin, amount);
 
     run(
         external.place_order(
@@ -105,4 +106,11 @@ function create_order(
         ),
         keypair
     );
+}
+
+function double_split_order_amount(amount: big_integer) {
+    return utils.split_amount_for_fee(
+        false,
+        utils.split_amount_for_fee(true, amount).remainder
+    ).remainder;
 }

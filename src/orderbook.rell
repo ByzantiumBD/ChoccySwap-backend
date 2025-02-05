@@ -56,10 +56,7 @@ function add_order(
 
     require(condition, "Spot price is better than the order price. Place a spot order instead.");
 
-    val order_acc = accounts.ensure_account_without_auth(
-        get_order_account_id(p),
-        ACC_TYPE_ORDER
-    );
+    val order_acc = utils.ensure_order_account(p);
 
     // lock the funds
     assets.Unsafe.transfer(
@@ -139,18 +136,19 @@ function swap_with_orderbook(
     amount_min: big_integer,
 ) {
     var to_pay = amount;
-    var received = 0L;
+    var spent_on_pair = 0L;
+    var received_from_pair = 0L;
+    var received_from_orders = 0L;
     var total_maker_fee = 0L;
-    val order_acc = accounts.ensure_account_without_auth(
-        get_order_account_id(pair),
-        ACC_TYPE_ORDER
-    );
+    val order_acc = utils.ensure_order_account(pair);
 
+    val pair_struct = pair.to_struct();
+    var amount_1 = if (buy_cusd) pair_struct.amount1 else pair_struct.amount_cusd;
+    var amount_2 = if (buy_cusd) pair_struct.amount_cusd else pair_struct.amount1;
 
-    val pair_at_start_struct = pair.to_struct();
-
-    val curr_price = utils.get_price(pair_at_start_struct);
+    val curr_price = utils.get_price(pair_struct);
     var partially_filled_order: struct<order>? = null;
+    var partially_filled_order_amount_executed = 0L;
     var last_processed = -1;
     
     // Keep track of fully executed orders to delete at the end
@@ -163,7 +161,7 @@ function swap_with_orderbook(
         theoretical_end_price,
         amm_out_amount
     ) = pairs.pair_functions.calc_swap_end_price_and_output(
-        pair_at_start_struct,
+        pair_struct,
         amount,
         buy_cusd
     );
@@ -180,29 +178,46 @@ function swap_with_orderbook(
         var am_to_next = 0L;
         if (order_last_idx > last_processed) {
             val next_stop = orders[last_processed + 1].price;
-            am_to_next = pairs.pair_functions.calc_swap_amount_to_price(
-                pair,
+            am_to_next = pairs.with_fees.calc_swap_amount_to_price(
+                amount_1,
+                amount_2,
                 next_stop,
-                buy_cusd,
             );
         } else {
             am_to_next = to_pay;
         }
 
         if (am_to_next >= to_pay) {
-            val rec = utils.spend_on_pair(account,pair,buy_cusd,to_pay);
+            val rec = pairs.theoretical.calc_swap_output(
+                amount_1,
+                amount_2,
+                to_pay
+            );
+
+            amount_1 += to_pay;
+            amount_2 -= rec;
+
+            received_from_pair += rec;
+            spent_on_pair += to_pay;
 
             to_pay = 0;
-            received += rec;
         } else {
             if (am_to_next != 0) {
-                val rec = utils.spend_on_pair(account,pair,buy_cusd,am_to_next);
+                val rec = pairs.theoretical.calc_swap_output(
+                    amount_1,
+                    amount_2,
+                    am_to_next
+                );
+
+                amount_1 += am_to_next;
+                amount_2 -= rec;
+
                 to_pay -= am_to_next;
-                received += rec;
+                received_from_pair += rec;
+                spent_on_pair += am_to_next;
             }
 
-            last_processed += 1;
-            val order_to_process = orders[last_processed];
+            val order_to_process = orders[++last_processed];
             val (spent, rec, maker_fee, fully_executed) = utils.spend_on_order(
                 account,
                 order_to_process,
@@ -214,71 +229,112 @@ function swap_with_orderbook(
                     not partially_filled_order??,
                     "More than one order has been left partially executed"
                 );
+
                 partially_filled_order = order_to_process;
+                partially_filled_order_amount_executed = rec;
             } else {
                 orders_to_delete.add(order_to_process.id);
             }
 
             total_maker_fee += maker_fee;
-            to_pay -= spent;
-            received += rec;
+            to_pay -= spent + maker_fee;
+            received_from_orders += rec;
         }
 
-        if (safety == to_pay and to_pay < 10L) {
-            require (to_pay >= 0L, "Negative to_pay!");
-            to_pay = 0L;
+        if (safety == to_pay) {
+            if (to_pay < 10L) {
+                require(to_pay >= 0L, "Negative to_pay!");
+                to_pay = 0L;
+            } else {
+                require(false, "Loop is stuck");
+            }
         }
         safety = to_pay;
     }
 
-    val (taker_amount, taker_fee) = utils.split_amount_for_fee(
-        true,
-        received
-    );
+    val received_from_pair_remainder = utils.split_amount_for_fee(false, received_from_pair).remainder;
+    val (
+        received_from_orders_remainder,
+        received_from_orders_fee
+    ) = utils.split_amount_for_fee(true, received_from_orders);
 
-    if(taker_amount > 0L){
-        assets.Unsafe.transfer(
-            order_acc,
-            account,
-            if (buy_cusd) main.cusd.asset else pair.asset1,
-            taker_amount 
-        ); 
-    }
-
-    if(taker_fee > 0L){
-        assets.Unsafe.transfer(
-            order_acc,
-            pair.account,
-            if (buy_cusd) main.cusd.asset else pair.asset1,
-            taker_fee
-        );
-    }
-
-    if (total_maker_fee > 0L) {
-        assets.Unsafe.transfer(
-            order_acc,
-            pair.account,
-            if (buy_cusd) pair.asset1 else main.cusd.asset,
-            total_maker_fee 
-        );
-    }
-
-
-    if (received < amount_min) {
-        val asset = if (buy_cusd) main.get_cusd() else pair.asset1;
+    if (received_from_orders_remainder + received_from_pair_remainder < amount_min) {
+        val asset = if (buy_cusd) main.get_cusd() else pair_struct.asset1;
         require(
             false,
             ("Swap for <%s>. Amount received too small, the price went out of range. "+
             "Expected <%s> but received <%s>").format(
                 asset.symbol,
                 assets.format_amount_with_decimals(amount_min, asset.decimals),
-                assets.format_amount_with_decimals(received, asset.decimals)
+                assets.format_amount_with_decimals(
+                    received_from_orders_remainder + received_from_pair_remainder,
+                    asset.decimals
+                )
             )
+        );
+    }
+
+    print("received_from_orders_remainder: ", received_from_orders_remainder);
+
+    // The orders must pay the market taker
+    if(received_from_orders_remainder > 0L){
+        assets.Unsafe.transfer(
+            order_acc,
+            account,
+            if (buy_cusd) main.get_cusd() else pair_struct.asset1,
+            received_from_orders_remainder 
+        ); 
+    }
+
+    // The taker pays the market maker's fee
+    if (total_maker_fee > 0L) {
+        assets.Unsafe.transfer(
+            account,
+            pair_struct.account,
+            if (buy_cusd) pair_struct.asset1 else main.get_cusd(),
+            total_maker_fee 
+        );
+    }
+
+    // The taker pays the pair
+    if (spent_on_pair > 0L) {
+        assets.Unsafe.transfer(
+            account,
+            pair_struct.account,
+            if (buy_cusd) pair_struct.asset1 else main.get_cusd(),
+            spent_on_pair 
+        );
+    }
+
+    // The makers pay the taker's fee
+    if (received_from_orders_fee > 0L) {
+        assets.Unsafe.transfer(
+            order_acc,
+            pair_struct.account,
+            if (buy_cusd) main.get_cusd() else pair_struct.asset1,
+            received_from_orders_fee 
+        );
+    }
+
+    // The pair sends the amount without fees to the market taker
+    if (received_from_pair_remainder > 0L) {
+        assets.Unsafe.transfer(
+            pair_struct.account,
+            account,
+            if (buy_cusd) main.get_cusd() else pair_struct.asset1,
+            received_from_pair_remainder 
         );
     }
 
     // Delete all fully executed orders at once
     delete order @* { .id in orders_to_delete };
+
+    if (partially_filled_order??) {
+        val o = order @ { .id == partially_filled_order.id };
+        o.amount -= partially_filled_order_amount_executed;
+
+        require (o.amount > 0L, "Order was fully executed");
+    }
 
     update main.chain_stats (
         executed_swaps += 1,
