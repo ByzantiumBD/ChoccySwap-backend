@@ -1,7 +1,12 @@
 import main;
+import lib.ft4.assets;
 
 query get_chain_stats() {
   return main.chain_stats.to_struct();
+}
+
+query get_main_asset() {
+    return assets.external.get_asset_by_id(main.cusd.asset_id);
 }
 
 query get_pair_info(asset: byte_array) {
