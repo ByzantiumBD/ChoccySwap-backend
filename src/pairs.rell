@@ -13,6 +13,7 @@ entity pair {
     index name;
     index symbol: text;
     key id: byte_array;
+    key order_acc : accounts.account;
 
     asset1: assets.asset;
     mutable amount1: big_integer;
@@ -227,13 +228,13 @@ namespace UNSAFE {
         create pair (
             name = asset1.name.lower_case(),
             symbol = asset1.symbol.lower_case(),
-
             asset1.id,
+            order_acc = utils.ensure_order_account(asset1.id),
+            account = lp_account,
             asset1,
             amount1,
             amount_cusd,
             lp_token = lp,
-            lp_account,
         );
 
         //-1000 to have min liq (uniswapv2 wp)

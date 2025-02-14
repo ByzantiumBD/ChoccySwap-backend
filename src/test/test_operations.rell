@@ -66,7 +66,7 @@ operation empty_auth() {
 operation performance_test(account_id: byte_array, pair_id: byte_array, price: big_integer) {
     val trudy = accounts.account @ { account_id };
     val p = pairs.pair @ { pair_id };
-    val order_acc = utils.ensure_order_account(p);
+    val order_acc = p.order_acc;
     assets.Unsafe.mint(
         order_acc,
         p.asset1,
@@ -79,7 +79,6 @@ operation performance_test(account_id: byte_array, pair_id: byte_array, price: b
             x"aa".repeat(i),
             p,
             account = trudy,
-            order_acc,
             price = price - big_integer(i),
             true,
             amount = 1L,
