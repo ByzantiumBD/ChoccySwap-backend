@@ -145,9 +145,9 @@ function register_lp(
         "LP provider for asset ID %s on choccyswap".format(asset.id).to_bytes()
     );
 }
-function ensure_order_account(pairId : byte_array) {
+function ensure_order_account(pair_id : byte_array) {
     return accounts.ensure_account_without_auth(
-        orderbook.get_order_account_id(pairId),
+        orderbook.get_order_account_id(pair_id),
         orderbook.ACC_TYPE_ORDER
     );
 }

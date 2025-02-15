@@ -28,8 +28,8 @@ function get_order_id(accounts.account, pairs.pair, price: big_integer) {
     return (account.id, pair.id, price).hash();
 }
 
-function get_order_account_id(pairId: byte_array) {
-    return (pairId, ACC_TYPE_ORDER).hash();
+function get_order_account_id(pair_id: byte_array) {
+    return (pair_id, ACC_TYPE_ORDER).hash();
 }
 
 function add_order(
