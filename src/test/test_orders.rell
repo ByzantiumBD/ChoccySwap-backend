@@ -166,8 +166,8 @@ function test_swaps_use_orders() {
         6676L - 1L + // rounding error
         utils.split_amount_for_fee(true, amount_worth_5k_dollars).fee
     );
-    assert_equals(assets.get_asset_balance(utils.ensure_order_account(p), p.asset1), 0L);
-    assert_equals(assets.get_asset_balance(utils.ensure_order_account(p), main.get_cusd()), 0L);
+    assert_equals(assets.get_asset_balance(p.order_acc, p.asset1), 0L);
+    assert_equals(assets.get_asset_balance(p.order_acc, main.get_cusd()), 0L);
 }
 
 function test_sell_cusd() {
@@ -297,7 +297,7 @@ function test_swaps_with_multiple_orders() {
     );
 
     val o = orderbook.order @ {};
-    assert_equals(o.amount, assets.get_asset_balance(o.order_acc, main.get_cusd()));
+        assert_equals(o.amount, assets.get_asset_balance(o.pair.order_acc, main.get_cusd()));
     assert_equals(o.amount, (amount_worth_6k_dollars / 2L)-5L); // roundings at every swap
 }
 

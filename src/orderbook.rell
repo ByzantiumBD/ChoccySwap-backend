@@ -13,7 +13,6 @@ val ACC_TYPE_ORDER = "CHOCCY_ORDER";
 entity order {
     index pairs.pair;
     index accounts.account;
-    order_acc: accounts.account;
     index price: big_integer;
     index buy_cusd: boolean;
     /** if (buy_cusd) amount1 else amount_cusd */
@@ -29,8 +28,8 @@ function get_order_id(accounts.account, pairs.pair, price: big_integer) {
     return (account.id, pair.id, price).hash();
 }
 
-function get_order_account_id(pairs.pair) {
-    return (pair.id, ACC_TYPE_ORDER).hash();
+function get_order_account_id(pair_id: byte_array) {
+    return (pair_id, ACC_TYPE_ORDER).hash();
 }
 
 function add_order(
@@ -56,7 +55,7 @@ function add_order(
 
     require(condition, "Spot price is better than the order price. Place a spot order instead.");
 
-    val order_acc = utils.ensure_order_account(p);
+    val order_acc = p.order_acc;
 
     // lock the funds
     assets.Unsafe.transfer(
@@ -70,7 +69,6 @@ function add_order(
         get_order_id(account, p, price),
         p,
         account,
-        order_acc,
         price,
         buy_cusd,
         amount,
@@ -81,7 +79,7 @@ function add_order(
 function remove_order(order) {
     // unlock the funds
     assets.Unsafe.transfer(
-            order.order_acc,
+            order.pair.order_acc,
             order.account,
             if (order.buy_cusd) order.pair.asset1 else main.get_cusd(),
             order.amount
@@ -140,7 +138,7 @@ function swap_with_orderbook(
     var received_from_pair = 0L;
     var received_from_orders = 0L;
     var total_maker_fee = 0L;
-    val order_acc = utils.ensure_order_account(pair);
+    val order_acc = pair.order_acc;
 
     val pair_struct = pair.to_struct();
     var amount_1 = if (buy_cusd) pair_struct.amount1 else pair_struct.amount_cusd;
